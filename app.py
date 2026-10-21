@@ -192,18 +192,24 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
         # Count writes in trace
         writes_in_trace = sum(1 for item in trace if (isinstance(item, tuple) and len(item) == 2 and item[1]))
 
-        # Recent accesses sample (last 20 for live visualizer feed)
-        recent_log = []
-        for res in access_results[-20:]:
-            recent_log.append({
-                "page_number": res.page_number,
-                "is_hit": res.is_hit,
+        # Full execution trace for step-by-step playback
+        execution_trace = []
+        for res in access_results:
+            execution_trace.append({
+                "step_id": res.timestamp,
+                "requested_page": res.page_number,
                 "is_write": res.is_write,
+                "action": "HIT" if res.is_hit else "FAULT",
                 "frame_id": res.frame_id,
                 "evicted_page": res.evicted_page,
                 "was_dirty_write_back": res.was_dirty_write_back,
-                "timestamp": res.timestamp,
+                "hybrid_score": round(res.hybrid_score, 4),
+                "memory_state": res.memory_state,
+                "decision_log": res.decision_log,
             })
+
+        # Recent accesses sample
+        recent_log = execution_trace[-20:]
 
         return {
             "config": {
@@ -231,6 +237,7 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
                 "free_count": mem.free_frame_count,
                 "frames": frames_state,
             },
+            "execution_trace": execution_trace,
             "trace_summary": {
                 "total_references": len(trace),
                 "writes_count": writes_in_trace,
@@ -246,6 +253,101 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Simulation error: {str(exc)}")
+
+
+class CompareRequest(BaseModel):
+    """Payload schema for POST /api/compare."""
+    workload_type: str = Field(
+        default="Zipf (Hot/Cold)",
+        description="Workload pattern: 'Sequential', 'Loop', 'Random', or 'Zipf (Hot/Cold)'",
+    )
+    frame_count: int = Field(default=8, ge=1, le=128)
+    references: int = Field(default=200, ge=1, le=5000)
+    write_probability: float = Field(default=0.2, ge=0.0, le=1.0)
+    page_count: Optional[int] = Field(default=20, ge=2, le=500)
+    seed: Optional[int] = Field(default=42)
+    window_size: Optional[int] = Field(default=50, ge=10, le=5000)
+    upper_fault_threshold: Optional[float] = Field(default=0.20, ge=0.0, le=1.0)
+    suspension_duration: Optional[int] = Field(default=2, ge=1, le=20)
+
+
+@app.post("/api/compare")
+def compare_algorithms(req: CompareRequest) -> Dict[str, Any]:
+    """
+    Executes all 4 algorithms (FIFO, LRU, LFU, AdaptiveHybrid) on the EXACT same trace.
+    Returns synchronized execution_trace arrays and metrics for each algorithm.
+    """
+    try:
+        trace = _generate_trace_for_workload(
+            workload_type=req.workload_type,
+            references=req.references,
+            page_count=req.page_count or 20,
+            write_prob=req.write_probability,
+            seed=req.seed,
+        )
+
+        algorithms = [
+            PageReplacementPolicy.FIFO,
+            PageReplacementPolicy.LRU,
+            PageReplacementPolicy.LFU,
+            PageReplacementPolicy.ADAPTIVE_HYBRID,
+        ]
+
+        results = {}
+        for algo in algorithms:
+            mem = MemoryManager(frame_count=req.frame_count)
+            proc = Process(process_id=1, name=f"Process-{algo}")
+            engine = SimulationEngine(
+                memory_manager=mem,
+                processes=[proc],
+                window_size=req.window_size or 50,
+                upper_fault_threshold=req.upper_fault_threshold or 0.20,
+                suspension_duration=req.suspension_duration or 2,
+                policy=algo,
+            )
+            access_results = engine.execute_trace(proc, trace)
+            m = engine.metrics
+
+            trace_data = []
+            for res in access_results:
+                trace_data.append({
+                    "step_id": res.timestamp,
+                    "requested_page": res.page_number,
+                    "is_write": res.is_write,
+                    "action": "HIT" if res.is_hit else "FAULT",
+                    "frame_id": res.frame_id,
+                    "evicted_page": res.evicted_page,
+                    "was_dirty_write_back": res.was_dirty_write_back,
+                    "hybrid_score": round(res.hybrid_score, 4),
+                    "memory_state": res.memory_state,
+                    "decision_log": res.decision_log,
+                })
+
+            results[algo] = {
+                "algorithm": algo,
+                "metrics": {
+                    "total_accesses": m.total_accesses,
+                    "page_hits": m.page_hits,
+                    "page_faults": m.page_faults,
+                    "dirty_write_backs": m.dirty_write_backs,
+                    "thrashing_suspensions": m.thrashing_suspensions,
+                    "hit_ratio": m.hit_ratio,
+                    "fault_ratio": m.fault_ratio,
+                    "eat": m.calculate_eat(),
+                    "eat_formatted": f"{m.calculate_eat():,.2f} ns",
+                },
+                "execution_trace": trace_data,
+            }
+
+        return {
+            "workload_type": req.workload_type,
+            "references": len(trace),
+            "frame_count": req.frame_count,
+            "seed": req.seed,
+            "comparison": results,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Comparison error: {str(exc)}")
 
 
 @app.get("/api/benchmark")

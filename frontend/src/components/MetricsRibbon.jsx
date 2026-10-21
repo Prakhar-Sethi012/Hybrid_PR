@@ -1,12 +1,12 @@
 import React from 'react';
-import { Activity, Database, HardDrive, AlertTriangle, Cpu, Clock, CheckCircle2 } from 'lucide-react';
+import { Database, HardDrive, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
 
 export default function MetricsRibbon({ metrics, latencies, isLoading }) {
   if (!metrics) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-24 bg-gray-900/60 border border-gray-800/80 rounded-xl animate-pulse" />
+          <div key={i} className="h-20 bg-[#121215] border border-zinc-800 rounded-xl animate-pulse" />
         ))}
       </div>
     );
@@ -18,90 +18,81 @@ export default function MetricsRibbon({ metrics, latencies, isLoading }) {
 
   const cards = [
     {
-      title: "Hit Ratio",
+      title: 'Hit Ratio',
       value: `${hitPercent}%`,
       subtext: `${metrics.page_hits?.toLocaleString()} / ${metrics.total_accesses?.toLocaleString()} hits`,
       icon: CheckCircle2,
-      color: metrics.hit_ratio >= 0.7 ? "text-emerald-400" : metrics.hit_ratio >= 0.3 ? "text-cyan-400" : "text-amber-400",
-      bgGlow: "group-hover:border-emerald-500/40",
-      accent: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
       badge: `${faultPercent}% Miss`,
+      badgeStyle: 'bg-emerald-950/40 text-emerald-400 border-emerald-800/60',
     },
     {
-      title: "Page Faults",
+      title: 'Page Faults',
       value: metrics.page_faults?.toLocaleString(),
       subtext: `Triggers Disk Read (${((latencies?.disk_read_ns || 10000000) / 1e6).toFixed(0)}ms)`,
       icon: Database,
-      color: metrics.page_faults === 0 ? "text-emerald-400" : "text-cyan-400",
-      bgGlow: "group-hover:border-cyan-500/40",
-      accent: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-      badge: "I/O Demand",
+      badge: 'Disk I/O',
+      badgeStyle: 'bg-zinc-900 text-zinc-400 border-zinc-800',
     },
     {
-      title: "Dirty Writes",
+      title: 'Dirty Writes',
       value: metrics.dirty_write_backs?.toLocaleString(),
-      subtext: `Evictions needing Disk Sync`,
+      subtext: 'Evictions needing Disk Sync',
       icon: HardDrive,
-      color: metrics.dirty_write_backs > 50 ? "text-amber-400" : "text-amber-300",
-      bgGlow: "group-hover:border-amber-500/40",
-      accent: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-      badge: "δ Penalty Incurred",
+      badge: '+δ Incurred',
+      badgeStyle: metrics.dirty_write_backs > 0
+        ? 'bg-amber-950/40 text-amber-400 border-amber-800/60'
+        : 'bg-zinc-900 text-zinc-400 border-zinc-800',
     },
     {
-      title: "Thrashing Suspensions",
+      title: 'Thrashing Suspends',
       value: metrics.thrashing_suspensions?.toLocaleString(),
-      subtext: metrics.thrashing_suspensions > 0 ? "Process throttled for cooling" : "Stable memory pressure",
+      subtext: metrics.thrashing_suspensions > 0 ? 'Processes cooled down' : 'Zero thrashing',
       icon: AlertTriangle,
-      color: metrics.thrashing_suspensions > 0 ? "text-rose-400" : "text-emerald-400",
-      bgGlow: metrics.thrashing_suspensions > 0 ? "group-hover:border-rose-500/40" : "group-hover:border-emerald-500/40",
-      accent: metrics.thrashing_suspensions > 0 ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-      badge: metrics.thrashing_suspensions > 0 ? "Thrashed" : "Optimal",
+      badge: metrics.thrashing_suspensions > 0 ? 'Thrashed' : 'Stable',
+      badgeStyle: metrics.thrashing_suspensions > 0
+        ? 'bg-rose-950/40 text-rose-400 border-rose-800/60'
+        : 'bg-zinc-900 text-zinc-400 border-zinc-800',
     },
     {
-      title: "Effective Access Time",
+      title: 'Hardware EAT',
       value: `${eatMs} ms`,
       subtext: `${Number(metrics.eat).toLocaleString(undefined, { maximumFractionDigits: 1 })} ns`,
       icon: Clock,
-      color: "text-purple-400",
-      bgGlow: "group-hover:border-purple-500/40",
-      accent: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-      badge: "Hardware EAT",
+      badge: 'Eff. Time',
+      badgeStyle: 'bg-zinc-900 text-zinc-400 border-zinc-800',
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
       {cards.map((c, idx) => {
         const Icon = c.icon;
         return (
           <div
             key={idx}
-            className={`group relative bg-gradient-to-b from-gray-900/90 to-gray-950/90 border border-gray-800/80 rounded-xl p-3.5 shadow-lg shadow-black/40 transition-all duration-300 ${c.bgGlow}`}
+            className="bg-[#121215] border border-zinc-800 rounded-xl p-3.5 transition-colors hover:border-zinc-700"
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
                 {c.title}
               </span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${c.accent}`}>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${c.badgeStyle}`}>
                 {c.badge}
               </span>
             </div>
 
             <div className="flex items-baseline justify-between mt-1">
-              <div className={`text-2xl font-bold font-mono tracking-tight ${c.color}`}>
+              <div className="text-xl font-bold font-mono text-zinc-100 tracking-tight">
                 {c.value}
               </div>
-              <div className="p-1.5 rounded-lg bg-gray-800/50 text-gray-400 group-hover:text-white transition-colors">
-                <Icon className="w-4 h-4" />
+              <div className="p-1 rounded bg-zinc-900 text-zinc-500">
+                <Icon className="w-3.5 h-3.5" />
               </div>
             </div>
 
-            <div className="mt-2 text-[11px] text-gray-400 truncate font-mono">
+            <div className="mt-2 text-[10px] text-zinc-500 truncate font-mono">
               {c.subtext}
             </div>
-
-            {/* Micro glow bar at bottom */}
-            <div className="absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         );
       })}

@@ -486,6 +486,8 @@ class AccessResult:
     was_dirty_write_back: bool = False
     timestamp: int = 0
     hybrid_score: float = 0.0
+    decision_log: str = ""
+    memory_state: Optional[List[Dict[str, Any]]] = None
 
     def __repr__(self) -> str:
         status = "HIT" if self.is_hit else "FAULT"
@@ -676,8 +678,14 @@ class SimulationEngine:
         candidates = []
         for frame_id in self.memory_manager.occupied_frames:
             frame = self.memory_manager.get_frame(frame_id)
-            candidates.append((frame.load_time, frame.frame_id))
+            candidates.append((frame.load_time, frame.frame_id, frame.page_number))
         best_candidate = min(candidates, key=lambda c: (c[0], c[1]))
+        self._last_victim_info = {
+            "policy": "FIFO",
+            "frame_id": best_candidate[1],
+            "page_number": best_candidate[2],
+            "load_time": best_candidate[0],
+        }
         return best_candidate[1]
 
     def _select_victim_lru(self) -> int:
@@ -691,8 +699,14 @@ class SimulationEngine:
         candidates = []
         for frame_id in self.memory_manager.occupied_frames:
             frame = self.memory_manager.get_frame(frame_id)
-            candidates.append((frame.last_referenced_time, frame.frame_id))
+            candidates.append((frame.last_referenced_time, frame.frame_id, frame.page_number))
         best_candidate = min(candidates, key=lambda c: (c[0], c[1]))
+        self._last_victim_info = {
+            "policy": "LRU",
+            "frame_id": best_candidate[1],
+            "page_number": best_candidate[2],
+            "last_referenced_time": best_candidate[0],
+        }
         return best_candidate[1]
 
     def _select_victim_lfu(self) -> int:
@@ -706,8 +720,14 @@ class SimulationEngine:
         candidates = []
         for frame_id in self.memory_manager.occupied_frames:
             frame = self.memory_manager.get_frame(frame_id)
-            candidates.append((frame.access_count, frame.last_referenced_time, frame.frame_id))
+            candidates.append((frame.access_count, frame.last_referenced_time, frame.frame_id, frame.page_number))
         best_candidate = min(candidates, key=lambda c: (c[0], c[1], c[2]))
+        self._last_victim_info = {
+            "policy": "LFU",
+            "frame_id": best_candidate[2],
+            "page_number": best_candidate[3],
+            "access_count": best_candidate[0],
+        }
         return best_candidate[2]
 
     def _select_victim_hybrid(self) -> int:
@@ -749,9 +769,21 @@ class SimulationEngine:
                 round(total_cost, 9),
                 frame.last_referenced_time,
                 frame.frame_id,
+                frame.page_number,
+                s_decayed,
+                dirty_penalty,
             ))
 
         best_candidate = min(candidates, key=lambda c: (c[0], c[1], c[2]))
+        self._last_victim_info = {
+            "policy": "AdaptiveHybrid",
+            "frame_id": best_candidate[2],
+            "page_number": best_candidate[3],
+            "cost": float(best_candidate[0]),
+            "s_decayed": float(best_candidate[4]),
+            "dirty_penalty": float(best_candidate[5]),
+            "lambda": float(self.lambda_value),
+        }
         return best_candidate[2]
 
     def execute_access(
@@ -841,6 +873,12 @@ class SimulationEngine:
 
             self.metrics.page_hits += 1
 
+            op_str = "WRITE" if is_write else "READ"
+            decision_log = (
+                f"Page {page_number} resident in Frame {frame_id} (HIT). "
+                f"Operation: {op_str}. S(p) updated to {new_score:.4f}."
+            )
+
             result = AccessResult(
                 is_hit=True,
                 process_id=proc.process_id,
@@ -852,6 +890,7 @@ class SimulationEngine:
                 was_dirty_write_back=False,
                 timestamp=current_time,
                 hybrid_score=new_score,
+                decision_log=decision_log,
             )
 
         else:
@@ -887,6 +926,11 @@ class SimulationEngine:
                 )
                 entry.hybrid_score = 1.0
 
+                decision_log = (
+                    f"Page {page_number} not in memory (FAULT). "
+                    f"Frame {frame_id} free; allocated and loaded Page {page_number} without eviction."
+                )
+
                 result = AccessResult(
                     is_hit=False,
                     process_id=proc.process_id,
@@ -898,6 +942,7 @@ class SimulationEngine:
                     was_dirty_write_back=False,
                     timestamp=current_time,
                     hybrid_score=1.0,
+                    decision_log=decision_log,
                 )
 
             else:
@@ -951,6 +996,30 @@ class SimulationEngine:
                 )
                 new_entry.hybrid_score = 1.0
 
+                # Format decision log with exact math for AdaptiveHybrid and others
+                policy_name = getattr(self.policy, "name", str(self.policy))
+                policy_upper = str(policy_name).upper()
+
+                if "HYBRID" in policy_upper or "ADAPTIVE" in policy_upper:
+                    cost_val = 1.0
+                    if hasattr(self, "_last_victim_info") and "cost" in self._last_victim_info:
+                        cost_val = self._last_victim_info["cost"]
+                    decision_log = (
+                        f"Memory full. Calculated C(p). Page {evicted_page} had lowest cost ({cost_val:.2f}). "
+                        f"Evicted Page {evicted_page}. λ is currently {self.lambda_value:.2f}."
+                    )
+                elif "FIFO" in policy_upper:
+                    decision_log = f"Memory full (FIFO). Page {evicted_page} in Frame {victim_frame_id} arrived earliest. Evicted Page {evicted_page}."
+                elif "LRU" in policy_upper:
+                    decision_log = f"Memory full (LRU). Page {evicted_page} in Frame {victim_frame_id} was least recently used. Evicted Page {evicted_page}."
+                elif "LFU" in policy_upper:
+                    decision_log = f"Memory full (LFU). Page {evicted_page} in Frame {victim_frame_id} had lowest frequency. Evicted Page {evicted_page}."
+                else:
+                    decision_log = f"Memory full. Evicted Page {evicted_page} from Frame {victim_frame_id}."
+
+                if was_dirty:
+                    decision_log += " (Dirty write-back occurred)."
+
                 result = AccessResult(
                     is_hit=False,
                     process_id=proc.process_id,
@@ -962,6 +1031,7 @@ class SimulationEngine:
                     was_dirty_write_back=was_dirty,
                     timestamp=current_time,
                     hybrid_score=1.0,
+                    decision_log=decision_log,
                 )
 
         # 5. Parameter Controller window tracking & dynamic lambda tuning
@@ -973,7 +1043,30 @@ class SimulationEngine:
             metrics=self.metrics,
         )
 
+        # Attach memory snapshot to result
+        result.memory_state = self.get_memory_snapshot()
+
         return result
+
+    def get_memory_snapshot(self) -> List[Dict[str, Any]]:
+        """Returns snapshot of physical memory frames at current step."""
+        snapshot = []
+        for i in range(self.memory_manager.frame_count):
+            frame = self.memory_manager.get_frame(i)
+            snapshot.append({
+                "frame_id": frame.frame_id,
+                "is_occupied": bool(frame.is_occupied),
+                "is_free": bool(frame.is_free),
+                "page_number": frame.page_number,
+                "process_id": frame.process_id,
+                "dirty": bool(frame.dirty_bit),
+                "hybrid_score": round(float(frame.hybrid_score), 4),
+                "access_count": int(frame.access_count),
+                "last_referenced_time": int(frame.last_referenced_time),
+                "load_time": int(frame.load_time),
+                "reference_bit": bool(frame.reference_bit),
+            })
+        return snapshot
 
     def execute_trace(
         self,

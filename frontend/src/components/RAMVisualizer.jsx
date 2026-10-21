@@ -1,88 +1,99 @@
 import React, { useState } from 'react';
-import { Layers, Flame, Check, Info, Server, Cpu, HardDrive, RefreshCw } from 'lucide-react';
+import { Layers, Flame, Check, Info, Server, Cpu, HardDrive } from 'lucide-react';
 
-export default function RAMVisualizer({ memoryManager, algorithm, onSelectFrame }) {
+export default function RAMVisualizer({
+  memoryManager,
+  currentStepData = null,
+  algorithm = 'AdaptiveHybrid',
+}) {
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [filter, setFilter] = useState('ALL'); // 'ALL', 'CLEAN', 'DIRTY', 'EMPTY'
 
   const frames = memoryManager?.frames || [];
   const totalFrames = memoryManager?.frame_count || frames.length;
-  const occupiedCount = memoryManager?.occupied_count ?? frames.filter(f => f.is_occupied).length;
-  const dirtyCount = frames.filter(f => f.is_occupied && f.dirty).length;
-  const cleanCount = frames.filter(f => f.is_occupied && !f.dirty).length;
+  const occupiedCount = frames.filter((f) => f.is_occupied).length;
+  const dirtyCount = frames.filter((f) => f.is_occupied && f.dirty).length;
+  const cleanCount = frames.filter((f) => f.is_occupied && !f.dirty).length;
   const emptyCount = totalFrames - occupiedCount;
   const utilPercent = totalFrames > 0 ? ((occupiedCount / totalFrames) * 100).toFixed(0) : 0;
 
-  const filteredFrames = frames.filter(frame => {
+  const filteredFrames = frames.filter((frame) => {
     if (filter === 'CLEAN') return frame.is_occupied && !frame.dirty;
     if (filter === 'DIRTY') return frame.is_occupied && frame.dirty;
     if (filter === 'EMPTY') return !frame.is_occupied;
     return true;
   });
 
-  const selectedFrame = selectedFrameId !== null ? frames.find(f => f.frame_id === selectedFrameId) : null;
+  const selectedFrame =
+    selectedFrameId !== null ? frames.find((f) => f.frame_id === selectedFrameId) : null;
 
   return (
-    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-5 shadow-2xl backdrop-blur-md mb-6">
-      {/* Visualizer Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-800/80 gap-3">
+    <div className="bg-[#121215] border border-zinc-800 rounded-xl p-5 mb-5 shadow-sm">
+      {/* Header & Filter Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-zinc-800/80 gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-            <Server className="w-5 h-5" />
+          <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300">
+            <Server className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-white tracking-wide flex items-center gap-2">
-              Physical Memory Frames Visualizer
-              <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-300 font-mono">
-                {occupiedCount}/{totalFrames} Allocated ({utilPercent}%)
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-zinc-100 tracking-tight">
+                Physical Memory Frames
+              </h2>
+              <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 font-mono">
+                {occupiedCount}/{totalFrames} Frames ({utilPercent}%)
               </span>
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Real-time frame allocation, dirty modification state, and eviction priority
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Live RAM state at current step &bull; Resident pages, dirty bits &bull; Policy: {algorithm}
             </p>
           </div>
         </div>
 
-        {/* Legend & Filter Controls */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {/* Filter Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
           <button
+            type="button"
             onClick={() => setFilter('ALL')}
-            className={`px-2.5 py-1 rounded-lg font-mono transition-all ${
+            className={`px-2.5 py-1 rounded-md transition-colors ${
               filter === 'ALL'
-                ? 'bg-gray-700 text-white font-medium shadow-sm'
-                : 'bg-gray-800/50 text-gray-400 hover:text-white'
+                ? 'bg-zinc-200 text-zinc-900 font-medium'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
             }`}
           >
             All ({totalFrames})
           </button>
           <button
+            type="button"
             onClick={() => setFilter('CLEAN')}
-            className={`px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5 transition-all ${
+            className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
               filter === 'CLEAN'
-                ? 'bg-emerald-950 text-emerald-300 border border-emerald-700 font-medium'
-                : 'bg-emerald-950/30 text-emerald-400/80 border border-emerald-900/40 hover:bg-emerald-950/60'
+                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/80 font-medium'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             Clean ({cleanCount})
           </button>
           <button
+            type="button"
             onClick={() => setFilter('DIRTY')}
-            className={`px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5 transition-all ${
+            className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
               filter === 'DIRTY'
-                ? 'bg-rose-950 text-rose-300 border border-rose-700 font-medium'
-                : 'bg-rose-950/30 text-rose-400/80 border border-rose-900/40 hover:bg-rose-950/60'
+                ? 'bg-amber-950/80 text-amber-300 border border-amber-700/80 font-medium'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             Dirty +δ ({dirtyCount})
           </button>
           <button
+            type="button"
             onClick={() => setFilter('EMPTY')}
-            className={`px-2.5 py-1 rounded-lg font-mono transition-all ${
+            className={`px-2.5 py-1 rounded-md transition-colors ${
               filter === 'EMPTY'
-                ? 'bg-gray-800 text-gray-200 border border-gray-600 font-medium'
-                : 'bg-gray-800/30 text-gray-500 hover:text-gray-300'
+                ? 'bg-zinc-800 text-zinc-200 border border-zinc-700 font-medium'
+                : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300 border border-zinc-800'
             }`}
           >
             Empty ({emptyCount})
@@ -90,154 +101,158 @@ export default function RAMVisualizer({ memoryManager, algorithm, onSelectFrame 
         </div>
       </div>
 
-      {/* Dynamic Frames Grid */}
-      <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+      {/* Frame Grid */}
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
         {filteredFrames.map((frame) => {
           const isSelected = selectedFrameId === frame.frame_id;
           const isOccupied = frame.is_occupied;
           const isDirty = isOccupied && frame.dirty;
           const isClean = isOccupied && !frame.dirty;
 
-          // Card Styles by Status
-          let cardStyle = "bg-gray-900/40 border-dashed border-gray-800 text-gray-600 hover:border-gray-700";
-          let badgeStyle = "bg-gray-800/60 text-gray-400 border-gray-700/60";
-          let statusText = "EMPTY";
-          let dotColor = "bg-gray-600";
+          // Check if this frame is the active frame of current step
+          const isActiveFrame = currentStepData && currentStepData.frame_id === frame.frame_id;
+          const isHitOnFrame = isActiveFrame && currentStepData.action === 'HIT';
+          const isFaultLoadedHere = isActiveFrame && currentStepData.action === 'FAULT';
 
-          if (isDirty) {
-            cardStyle = "bg-gradient-to-b from-rose-950/40 to-gray-900/80 border-rose-500/40 hover:border-rose-400/80 shadow-lg shadow-rose-950/20";
-            badgeStyle = "bg-rose-500/10 text-rose-400 border-rose-500/30 font-medium";
-            statusText = "DIRTY (δ Risk)";
-            dotColor = "bg-rose-500 shadow-rose-500/50 shadow-sm";
-          } else if (isClean) {
-            cardStyle = "bg-gradient-to-b from-emerald-950/30 to-gray-900/80 border-emerald-500/30 hover:border-emerald-400/70 shadow-lg shadow-emerald-950/20";
-            badgeStyle = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-medium";
-            statusText = "CLEAN";
-            dotColor = "bg-emerald-400 shadow-emerald-400/50 shadow-sm";
-          }
-
-          if (isSelected) {
-            cardStyle += " ring-2 ring-cyan-400 ring-offset-2 ring-offset-gray-950";
+          let cardBorder = 'border-zinc-800 hover:border-zinc-700 bg-[#09090b]';
+          if (isActiveFrame) {
+            cardBorder = isHitOnFrame
+              ? 'border-emerald-500/80 ring-1 ring-emerald-500/50 bg-emerald-950/10'
+              : 'border-rose-500/80 ring-1 ring-rose-500/50 bg-rose-950/10';
+          } else if (isSelected) {
+            cardBorder = 'border-zinc-400 ring-1 ring-zinc-400 bg-zinc-900';
+          } else if (isDirty) {
+            cardBorder = 'border-amber-900/50 hover:border-amber-700/60 bg-[#0d0c0a]';
           }
 
           return (
             <div
               key={frame.frame_id}
               onClick={() => setSelectedFrameId(isSelected ? null : frame.frame_id)}
-              className={`relative cursor-pointer rounded-xl p-3 border transition-all duration-200 transform hover:-translate-y-0.5 ${cardStyle}`}
+              className={`relative cursor-pointer rounded-lg p-3 border transition-colors ${cardBorder}`}
             >
-              {/* Top Frame Header */}
-              <div className="flex items-center justify-between text-xs font-mono text-gray-400 mb-2">
-                <span className="font-semibold text-gray-300">
-                  Frame #{frame.frame_id}
-                </span>
-                <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+              {/* Frame Header */}
+              <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 mb-1.5">
+                <span className="font-medium text-zinc-300">Frame #{frame.frame_id}</span>
+                <div className="flex items-center gap-1">
+                  {isActiveFrame && (
+                    <span
+                      className={`text-[9px] px-1 py-0.2 rounded font-bold uppercase ${
+                        isHitOnFrame ? 'bg-emerald-900 text-emerald-300' : 'bg-rose-900 text-rose-300'
+                      }`}
+                    >
+                      {isHitOnFrame ? 'HIT' : 'NEW'}
+                    </span>
+                  )}
+                  {isOccupied && (
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        isDirty ? 'bg-amber-400' : 'bg-emerald-400'
+                      }`}
+                    />
+                  )}
+                </div>
               </div>
 
-              {/* Main Page Display */}
-              <div className="py-2 text-center">
+              {/* Page Number */}
+              <div className="py-1 text-center">
                 {isOccupied ? (
                   <div>
-                    <div className="text-xl font-bold font-mono text-white tracking-tight">
+                    <div className="text-lg font-bold font-mono text-zinc-100 tracking-tight">
                       Page {frame.page_number}
                     </div>
-                    <div className="text-[11px] font-mono text-gray-400 mt-0.5">
+                    <div className="text-[10px] font-mono text-zinc-500">
                       PID: {frame.process_id ?? 1}
                     </div>
                   </div>
                 ) : (
-                  <div className="text-sm font-mono text-gray-500 italic py-2">
-                    [ Unallocated ]
+                  <div className="text-xs font-mono text-zinc-600 italic py-2">
+                    [ Empty ]
                   </div>
                 )}
               </div>
 
-              {/* Bottom Status & Metrics */}
-              <div className="mt-2 pt-2 border-t border-gray-800/60 flex items-center justify-between text-[10px] font-mono">
-                <span className={`px-1.5 py-0.5 rounded border ${badgeStyle} truncate max-w-[90px]`}>
-                  {statusText}
-                </span>
-                {isOccupied && (
-                  <span className="text-gray-400 text-[10px] font-mono" title="Hybrid Score S(p)">
-                    S: {frame.hybrid_score?.toFixed(2)}
-                  </span>
+              {/* Frame Footer / State */}
+              <div className="mt-1.5 pt-1.5 border-t border-zinc-800/80 flex items-center justify-between text-[10px] font-mono">
+                {isOccupied ? (
+                  <>
+                    <span
+                      className={`px-1 rounded border text-[9px] ${
+                        isDirty
+                          ? 'bg-amber-950/40 text-amber-400 border-amber-800/60 font-semibold'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {isDirty ? 'DIRTY +δ' : 'CLEAN'}
+                    </span>
+                    <span className="text-zinc-500 font-mono" title="Hybrid Score S(p)">
+                      S: {frame.hybrid_score?.toFixed(2) ?? '0.00'}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-zinc-600 text-[10px]">&mdash;</span>
                 )}
               </div>
-
-              {/* Selection Indicator Corner */}
-              {isSelected && (
-                <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400" />
-              )}
             </div>
           );
         })}
       </div>
 
-      {/* Frame Inspector Drawer */}
+      {/* Selected Frame Detail Drawer */}
       {selectedFrame && (
-        <div className="mt-5 p-4 rounded-xl bg-gray-950 border border-cyan-500/30 shadow-xl transition-all">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-800">
+        <div className="mt-4 p-3.5 rounded-lg bg-[#09090b] border border-zinc-800 text-xs font-mono">
+          <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-sm font-semibold text-white font-mono">
-                Frame #{selectedFrame.frame_id} Detailed State Inspector
-              </h3>
+              <Info className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="font-semibold text-zinc-200">
+                Frame #{selectedFrame.frame_id} State Inspector
+              </span>
+              <span className="text-zinc-500">
+                ({selectedFrame.is_occupied ? `Page ${selectedFrame.page_number}` : 'Unallocated'})
+              </span>
             </div>
             <button
+              type="button"
               onClick={() => setSelectedFrameId(null)}
-              className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-800"
+              className="text-zinc-400 hover:text-zinc-200 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[11px]"
             >
               Close
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 text-xs font-mono">
-            <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800">
-              <span className="text-gray-500 block text-[10px]">Resident Page</span>
-              <span className="text-white text-sm font-bold">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[11px]">
+            <div className="p-2 rounded bg-zinc-900/60 border border-zinc-800/80">
+              <div className="text-zinc-500 text-[10px]">Page</div>
+              <div className="font-bold text-zinc-200">
                 {selectedFrame.is_occupied ? `Page ${selectedFrame.page_number}` : 'None'}
-              </span>
+              </div>
             </div>
-            <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800">
-              <span className="text-gray-500 block text-[10px]">Dirty Modification</span>
-              <span className={selectedFrame.dirty ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
-                {selectedFrame.dirty ? 'DIRTY (Must Write to Disk)' : 'CLEAN (Free Eviction)'}
-              </span>
+            <div className="p-2 rounded bg-zinc-900/60 border border-zinc-800/80">
+              <div className="text-zinc-500 text-[10px]">Dirty State</div>
+              <div className={selectedFrame.dirty ? 'font-bold text-amber-400' : 'font-bold text-emerald-400'}>
+                {selectedFrame.dirty ? 'DIRTY (+δ Penalty)' : 'CLEAN'}
+              </div>
             </div>
-            <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800">
-              <span className="text-gray-500 block text-[10px]">Hybrid Score S(p)</span>
-              <span className="text-cyan-400 font-bold">
+            <div className="p-2 rounded bg-zinc-900/60 border border-zinc-800/80">
+              <div className="text-zinc-500 text-[10px]">Hybrid Score S(p)</div>
+              <div className="font-bold text-zinc-200">
                 {selectedFrame.hybrid_score?.toFixed(4) ?? '0.0000'}
-              </span>
+              </div>
             </div>
-            <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800">
-              <span className="text-gray-500 block text-[10px]">Access Count (LFU)</span>
-              <span className="text-purple-400 font-bold">
-                {selectedFrame.access_count ?? 1} refs
-              </span>
+            <div className="p-2 rounded bg-zinc-900/60 border border-zinc-800/80">
+              <div className="text-zinc-500 text-[10px]">Access Count (LFU)</div>
+              <div className="font-bold text-zinc-200">{selectedFrame.access_count ?? 0} refs</div>
             </div>
-            <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800">
-              <span className="text-gray-500 block text-[10px]">Last Reference Time</span>
-              <span className="text-amber-400 font-bold">
-                Tick #{selectedFrame.last_referenced_time ?? 0}
-              </span>
+            <div className="p-2 rounded bg-zinc-900/60 border border-zinc-800/80">
+              <div className="text-zinc-500 text-[10px]">Last Ref Tick (LRU)</div>
+              <div className="font-bold text-zinc-200">
+                #{selectedFrame.last_referenced_time ?? 0}
+              </div>
             </div>
-            <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800">
-              <span className="text-gray-500 block text-[10px]">Load Arrival Time</span>
-              <span className="text-gray-300 font-bold">
-                Tick #{selectedFrame.load_time ?? 0}
-              </span>
+            <div className="p-2 rounded bg-zinc-900/60 border border-zinc-800/80">
+              <div className="text-zinc-500 text-[10px]">Load Arrival Tick</div>
+              <div className="font-bold text-zinc-200">#{selectedFrame.load_time ?? 0}</div>
             </div>
-          </div>
-
-          <div className="mt-3 text-[11px] text-gray-400 flex items-center justify-between">
-            <span>
-              Eviction Cost Formula under {algorithm}:{' '}
-              <code className="text-cyan-300 font-mono">
-                C(p) = S(p) + {selectedFrame.dirty ? 'δ (2.0 Disk Penalty)' : '0 (Clean)'}
-              </code>
-            </span>
-            <span className="text-gray-500">Click card again to dismiss inspector</span>
           </div>
         </div>
       )}

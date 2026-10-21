@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Settings2, Sliders, Sparkles, RefreshCw, Layers, ShieldCheck, Zap } from 'lucide-react';
+import { Play, Settings2, RefreshCw } from 'lucide-react';
 
 export default function ConfigurationSidebar({
   config,
@@ -8,10 +8,10 @@ export default function ConfigurationSidebar({
   isLoading,
 }) {
   const algorithms = [
-    { id: 'AdaptiveHybrid', name: 'AdaptiveHybrid', desc: 'Decayed LRFU + δ Dirty Penalty Cost', tag: 'Best EAT', tagColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
-    { id: 'FIFO', name: 'FIFO', desc: 'First-In, First-Out Arrival Eviction', tag: 'Baseline', tagColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
-    { id: 'LRU', name: 'LRU', desc: 'Least Recently Used Access Eviction', tag: 'Recency', tagColor: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
-    { id: 'LFU', name: 'LFU', desc: 'Least Frequently Used Frequency Eviction', tag: 'Frequency', tagColor: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
+    { id: 'AdaptiveHybrid', name: 'AdaptiveHybrid', desc: 'Decayed LRFU + δ Dirty Penalty Cost', tag: 'Hybrid' },
+    { id: 'LRU', name: 'LRU', desc: 'Least Recently Used Access Eviction', tag: 'Recency' },
+    { id: 'LFU', name: 'LFU', desc: 'Least Frequently Used Frequency Eviction', tag: 'Frequency' },
+    { id: 'FIFO', name: 'FIFO', desc: 'First-In, First-Out Arrival Eviction', tag: 'Baseline' },
   ];
 
   const workloads = [
@@ -22,10 +22,10 @@ export default function ConfigurationSidebar({
   ];
 
   const presets = [
-    { label: 'Zipf 80/20', algo: 'AdaptiveHybrid', workload: 'Zipf (Hot/Cold)', frames: 10, refs: 1000, writeProb: 0.2 },
-    { label: 'Loop Thrash', algo: 'AdaptiveHybrid', workload: 'Loop', frames: 10, refs: 1000, writeProb: 0.2 },
-    { label: 'Seq Scan', algo: 'LRU', workload: 'Sequential', frames: 10, refs: 1000, writeProb: 0.2 },
-    { label: 'High Writes', algo: 'AdaptiveHybrid', workload: 'Zipf (Hot/Cold)', frames: 10, refs: 1000, writeProb: 0.5 },
+    { label: 'Zipf 80/20', algo: 'AdaptiveHybrid', workload: 'Zipf (Hot/Cold)', frames: 10, refs: 500, writeProb: 0.2 },
+    { label: 'Loop Thrash', algo: 'AdaptiveHybrid', workload: 'Loop', frames: 10, refs: 500, writeProb: 0.2 },
+    { label: 'Seq Scan', algo: 'LRU', workload: 'Sequential', frames: 10, refs: 500, writeProb: 0.2 },
+    { label: 'High Writes', algo: 'AdaptiveHybrid', workload: 'Zipf (Hot/Cold)', frames: 10, refs: 500, writeProb: 0.5 },
   ];
 
   const applyPreset = (p) => {
@@ -40,27 +40,27 @@ export default function ConfigurationSidebar({
   };
 
   return (
-    <aside className="w-full lg:w-80 flex-shrink-0 bg-gray-900/90 border border-gray-800 rounded-2xl p-5 shadow-2xl backdrop-blur-md flex flex-col justify-between">
-      <div className="space-y-5">
+    <aside className="w-full lg:w-80 flex-shrink-0 bg-[#121215] border border-zinc-800 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+      <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-gray-800">
-          <div className="flex items-center gap-2 text-white">
-            <Settings2 className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-sm font-semibold uppercase tracking-wider">
-              Simulation Config
+        <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+          <div className="flex items-center gap-2 text-zinc-100">
+            <Settings2 className="w-4 h-4 text-zinc-400" />
+            <h2 className="text-xs font-mono font-semibold uppercase tracking-wider">
+              Simulation Parameters
             </h2>
           </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
-            Stage 5 API
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+            Engine v2
           </span>
         </div>
 
         {/* Algorithm Selection */}
         <div>
-          <label className="text-xs font-semibold text-gray-300 block mb-2 uppercase tracking-wide">
-            Replacement Algorithm
+          <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 block mb-1.5">
+            Algorithm Policy
           </label>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {algorithms.map((algo) => {
               const active = config.algorithm === algo.id;
               return (
@@ -68,22 +68,28 @@ export default function ConfigurationSidebar({
                   key={algo.id}
                   type="button"
                   onClick={() => onChange({ ...config, algorithm: algo.id })}
-                  className={`w-full text-left p-2.5 rounded-xl border transition-all text-xs flex items-center justify-between ${
+                  className={`w-full text-left p-2 rounded-lg border transition-colors text-xs flex items-center justify-between ${
                     active
-                      ? 'bg-gradient-to-r from-cyan-950/60 to-gray-900 border-cyan-500/60 text-white shadow-md shadow-cyan-950/30'
-                      : 'bg-gray-950/40 border-gray-800 text-gray-400 hover:text-gray-200 hover:border-gray-700'
+                      ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                      : 'bg-[#09090b] border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                   }`}
                 >
-                  <div>
-                    <div className="font-semibold text-white flex items-center gap-1.5">
+                  <div className="min-w-0 pr-2">
+                    <div className="font-semibold text-zinc-200 font-mono flex items-center gap-1.5">
                       {algo.name}
-                      {active && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />}
+                      {active && <span className="w-1.5 h-1.5 rounded-full bg-zinc-200" />}
                     </div>
-                    <div className="text-[10px] text-gray-400 font-mono mt-0.5">
+                    <div className="text-[10px] text-zinc-500 font-mono truncate">
                       {algo.desc}
                     </div>
                   </div>
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${algo.tagColor}`}>
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                      active
+                        ? 'bg-zinc-900 text-zinc-200 border-zinc-700'
+                        : 'bg-zinc-900/60 text-zinc-500 border-zinc-800'
+                    }`}
+                  >
                     {algo.tag}
                   </span>
                 </button>
@@ -94,17 +100,17 @@ export default function ConfigurationSidebar({
 
         {/* Workload Pattern Dropdown */}
         <div>
-          <label className="text-xs font-semibold text-gray-300 block mb-2 uppercase tracking-wide">
-            Workload Pattern
+          <label className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 block mb-1.5">
+            Workload Distribution
           </label>
           <select
             value={config.workload_type}
             onChange={(e) => onChange({ ...config, workload_type: e.target.value })}
-            className="w-full bg-gray-950 border border-gray-800 text-white text-xs rounded-xl p-2.5 font-mono focus:border-cyan-500 focus:outline-none transition-colors"
+            className="w-full bg-[#09090b] border border-zinc-800 text-zinc-200 text-xs rounded-lg p-2 font-mono focus:border-zinc-600 focus:outline-none transition-colors"
           >
             {workloads.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.label} ({w.desc})
+                {w.label} - {w.desc}
               </option>
             ))}
           </select>
@@ -112,12 +118,10 @@ export default function ConfigurationSidebar({
 
         {/* Physical Frames Count */}
         <div>
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-semibold text-gray-300 uppercase tracking-wide">
-              Physical Frames
-            </span>
-            <span className="font-mono text-cyan-400 font-bold bg-cyan-950/60 border border-cyan-800 px-2 py-0.5 rounded">
-              {config.frame_count} frames
+          <div className="flex items-center justify-between text-xs mb-1 font-mono">
+            <span className="text-zinc-400 text-[11px] uppercase tracking-wider">Frames</span>
+            <span className="text-zinc-200 font-bold bg-zinc-900 border border-zinc-800 px-1.5 py-0.2 rounded text-[11px]">
+              {config.frame_count}
             </span>
           </div>
           <input
@@ -127,47 +131,43 @@ export default function ConfigurationSidebar({
             step={1}
             value={config.frame_count}
             onChange={(e) => onChange({ ...config, frame_count: parseInt(e.target.value) || 10 })}
-            className="w-full accent-cyan-400 bg-gray-800 h-1.5 rounded-lg cursor-pointer"
+            className="w-full cursor-pointer"
           />
-          <div className="flex justify-between text-[10px] text-gray-500 font-mono mt-1">
-            <span>2 frames (constrained)</span>
-            <span>32 frames (spacious)</span>
+          <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
+            <span>2 (Constrained)</span>
+            <span>32 (Spacious)</span>
           </div>
         </div>
 
         {/* Memory References */}
         <div>
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-semibold text-gray-300 uppercase tracking-wide">
-              Memory References
-            </span>
-            <span className="font-mono text-purple-400 font-bold bg-purple-950/60 border border-purple-800 px-2 py-0.5 rounded">
-              {config.references?.toLocaleString()} refs
+          <div className="flex items-center justify-between text-xs mb-1 font-mono">
+            <span className="text-zinc-400 text-[11px] uppercase tracking-wider">Access References</span>
+            <span className="text-zinc-200 font-bold bg-zinc-900 border border-zinc-800 px-1.5 py-0.2 rounded text-[11px]">
+              {config.references?.toLocaleString()}
             </span>
           </div>
           <input
             type="range"
-            min={100}
-            max={3000}
-            step={100}
+            min={50}
+            max={1000}
+            step={50}
             value={config.references}
-            onChange={(e) => onChange({ ...config, references: parseInt(e.target.value) || 1000 })}
-            className="w-full accent-purple-400 bg-gray-800 h-1.5 rounded-lg cursor-pointer"
+            onChange={(e) => onChange({ ...config, references: parseInt(e.target.value) || 500 })}
+            className="w-full cursor-pointer"
           />
-          <div className="flex justify-between text-[10px] text-gray-500 font-mono mt-1">
-            <span>100 refs</span>
-            <span>3,000 refs</span>
+          <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
+            <span>50 refs</span>
+            <span>1,000 refs</span>
           </div>
         </div>
 
         {/* Write Probability Slider */}
         <div>
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-semibold text-gray-300 uppercase tracking-wide">
-              Write Probability
-            </span>
-            <span className="font-mono text-amber-400 font-bold bg-amber-950/60 border border-amber-800 px-2 py-0.5 rounded">
-              {(config.write_probability * 100).toFixed(0)}% Writes
+          <div className="flex items-center justify-between text-xs mb-1 font-mono">
+            <span className="text-zinc-400 text-[11px] uppercase tracking-wider">Write Probability</span>
+            <span className="text-amber-400 font-bold bg-zinc-900 border border-zinc-800 px-1.5 py-0.2 rounded text-[11px]">
+              {(config.write_probability * 100).toFixed(0)}%
             </span>
           </div>
           <input
@@ -177,31 +177,18 @@ export default function ConfigurationSidebar({
             step={0.05}
             value={config.write_probability}
             onChange={(e) => onChange({ ...config, write_probability: parseFloat(e.target.value) })}
-            className="w-full accent-amber-400 bg-gray-800 h-1.5 rounded-lg cursor-pointer"
+            className="w-full cursor-pointer"
           />
-          <div className="flex justify-between text-[10px] text-gray-500 font-mono mt-1">
-            <span>0% (Read Only)</span>
-            <span>100% (Pure Writes)</span>
+          <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
+            <span>0% Read Only</span>
+            <span>100% Writes</span>
           </div>
-        </div>
-
-        {/* Seed Input */}
-        <div>
-          <label className="text-xs font-semibold text-gray-300 block mb-1 uppercase tracking-wide">
-            Reproducibility Seed
-          </label>
-          <input
-            type="number"
-            value={config.seed ?? 42}
-            onChange={(e) => onChange({ ...config, seed: parseInt(e.target.value) || 42 })}
-            className="w-full bg-gray-950 border border-gray-800 text-white text-xs rounded-xl p-2 font-mono focus:border-cyan-500 focus:outline-none"
-          />
         </div>
 
         {/* Quick Presets */}
         <div>
-          <span className="text-[11px] font-medium text-gray-400 block mb-1.5">
-            Quick Scenario Presets
+          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block mb-1">
+            Presets
           </span>
           <div className="grid grid-cols-2 gap-1.5">
             {presets.map((p, idx) => (
@@ -209,7 +196,7 @@ export default function ConfigurationSidebar({
                 key={idx}
                 type="button"
                 onClick={() => applyPreset(p)}
-                className="text-[11px] font-mono px-2 py-1 rounded-lg bg-gray-950 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 transition-colors truncate"
+                className="text-[11px] font-mono px-2 py-1 rounded bg-[#09090b] border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors truncate text-left"
               >
                 {p.label}
               </button>
@@ -218,21 +205,22 @@ export default function ConfigurationSidebar({
         </div>
       </div>
 
-      {/* Run Simulation Action Button */}
-      <div className="pt-5 mt-5 border-t border-gray-800">
+      {/* Primary Action Button */}
+      <div className="pt-4 mt-4 border-t border-zinc-800">
         <button
+          type="button"
           onClick={onRunSimulation}
           disabled={isLoading}
-          className="w-full py-3 px-4 rounded-xl font-semibold text-sm text-gray-950 bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 shadow-lg shadow-cyan-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="w-full py-2.5 px-4 rounded-lg font-medium text-xs font-mono text-zinc-950 bg-zinc-100 hover:bg-zinc-200 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer"
         >
           {isLoading ? (
             <>
-              <RefreshCw className="w-4 h-4 animate-spin text-gray-950" />
-              <span>Simulating Trace...</span>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>Simulating...</span>
             </>
           ) : (
             <>
-              <Play className="w-4 h-4 fill-gray-950 text-gray-950" />
+              <Play className="w-3.5 h-3.5 fill-current" />
               <span>Run Simulation</span>
             </>
           )}

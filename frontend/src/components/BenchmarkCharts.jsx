@@ -9,7 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { BarChart3, RefreshCw, Trophy, Zap, AlertCircle, TrendingDown, HelpCircle } from 'lucide-react';
+import { BarChart3, RefreshCw, Trophy, Zap, AlertCircle, TrendingDown } from 'lucide-react';
 
 export default function BenchmarkCharts({ apiBaseUrl = '' }) {
   const [data, setData] = useState(null);
@@ -57,7 +57,6 @@ export default function BenchmarkCharts({ apiBaseUrl = '' }) {
         AdaptiveHybrid: item.AdaptiveHybrid_hit_ratio ?? 0,
       };
     } else {
-      // dirty writes
       return {
         workload: item.workload,
         FIFO: item.FIFO_dirty_writes ?? 0,
@@ -84,21 +83,21 @@ export default function BenchmarkCharts({ apiBaseUrl = '' }) {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 shadow-2xl text-xs font-mono">
-          <div className="font-bold text-white mb-2 pb-1 border-b border-gray-800 flex items-center justify-between gap-4">
+        <div className="bg-[#09090b] border border-zinc-800 rounded-lg p-3 text-xs font-mono shadow-md">
+          <div className="font-semibold text-zinc-100 mb-2 pb-1 border-b border-zinc-800 flex items-center justify-between gap-4">
             <span>Workload: {label}</span>
-            <span className="text-[10px] text-gray-400 font-normal">10 Frames / 1,000 Refs</span>
+            <span className="text-[10px] text-zinc-500 font-normal">10 Frames &bull; 1k Refs</span>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {payload.map((entry, index) => (
               <div key={index} className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: entry.color }} />
-                  <span className={entry.name === 'AdaptiveHybrid' ? 'font-bold text-emerald-300' : 'text-gray-300'}>
+                  <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: entry.color }} />
+                  <span className={entry.name === 'AdaptiveHybrid' ? 'font-bold text-zinc-100' : 'text-zinc-400'}>
                     {entry.name}:
                   </span>
                 </div>
-                <span className="font-semibold text-white">
+                <span className="font-semibold text-zinc-200">
                   {entry.value}
                   {getUnitSuffix()}
                 </span>
@@ -112,55 +111,60 @@ export default function BenchmarkCharts({ apiBaseUrl = '' }) {
   };
 
   return (
-    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-5 shadow-2xl backdrop-blur-md">
-      {/* Benchmark Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-800 gap-3">
+    <div className="bg-[#121215] border border-zinc-800 rounded-xl p-5 mb-5 shadow-sm">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-zinc-800/80 gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
-            <BarChart3 className="w-5 h-5" />
+          <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300">
+            <BarChart3 className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-white tracking-wide flex items-center gap-2">
-              Automated Comparative Benchmark Suite
-              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/60 text-emerald-300 font-mono">
-                Stage 5 Evaluation
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-zinc-100 tracking-tight">
+                Empirical Benchmark Suite
+              </h2>
+              <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 font-mono">
+                Cross-Workload Matrix
               </span>
-            </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Testing matrix comparing FIFO, LRU, LFU, and AdaptiveHybrid across 4 workloads on identical traces
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Identical workload traces comparing FIFO, LRU, LFU, and AdaptiveHybrid
             </p>
           </div>
         </div>
 
         {/* View Mode & Refresh */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center p-1 bg-gray-950 rounded-xl border border-gray-800 text-xs font-mono">
+          <div className="flex items-center p-0.5 bg-[#09090b] rounded-lg border border-zinc-800 text-xs font-mono">
             <button
+              type="button"
               onClick={() => setMetricMode('eat_ms')}
-              className={`px-3 py-1 rounded-lg transition-all ${
+              className={`px-2.5 py-1 rounded-md transition-colors ${
                 metricMode === 'eat_ms'
-                  ? 'bg-purple-900/50 text-purple-200 border border-purple-700/60 font-semibold'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-zinc-200 text-zinc-900 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               EAT (ms)
             </button>
             <button
+              type="button"
               onClick={() => setMetricMode('hit_ratio')}
-              className={`px-3 py-1 rounded-lg transition-all ${
+              className={`px-2.5 py-1 rounded-md transition-colors ${
                 metricMode === 'hit_ratio'
-                  ? 'bg-cyan-900/50 text-cyan-200 border border-cyan-700/60 font-semibold'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-zinc-200 text-zinc-900 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               Hit Ratio %
             </button>
             <button
+              type="button"
               onClick={() => setMetricMode('dirty_writes')}
-              className={`px-3 py-1 rounded-lg transition-all ${
+              className={`px-2.5 py-1 rounded-md transition-colors ${
                 metricMode === 'dirty_writes'
-                  ? 'bg-amber-900/50 text-amber-200 border border-amber-700/60 font-semibold'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-zinc-200 text-zinc-900 font-medium'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               Dirty Writes
@@ -168,94 +172,92 @@ export default function BenchmarkCharts({ apiBaseUrl = '' }) {
           </div>
 
           <button
+            type="button"
             onClick={fetchBenchmark}
             disabled={isLoading}
-            className="p-2 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/60 transition-colors disabled:opacity-50 cursor-pointer"
+            className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-800 transition-colors disabled:opacity-40"
             title="Re-run Benchmark Suite"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-cyan-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Chart Status or Container */}
+      {/* Chart View */}
       <div className="mt-4">
-        <div className="flex items-center justify-between text-xs text-gray-400 mb-2 font-mono">
-          <span className="font-semibold text-gray-300">{getMetricTitle()}</span>
-          <span>Seed=42 (Strict Identical Traces Guarantee)</span>
+        <div className="flex items-center justify-between text-xs text-zinc-400 mb-2 font-mono">
+          <span className="font-medium text-zinc-300">{getMetricTitle()}</span>
+          <span className="text-zinc-500 text-[11px]">Seed=42 Guarantee</span>
         </div>
 
         {error ? (
-          <div className="h-72 flex items-center justify-center border border-rose-900/40 bg-rose-950/20 rounded-xl text-rose-400 gap-2 text-xs">
+          <div className="h-64 flex items-center justify-center border border-rose-900/40 bg-rose-950/20 rounded-lg text-rose-400 gap-2 text-xs font-mono">
             <AlertCircle className="w-4 h-4" />
             <span>{error}</span>
           </div>
         ) : isLoading && !data ? (
-          <div className="h-72 flex flex-col items-center justify-center border border-gray-800 bg-gray-950/40 rounded-xl text-gray-400 gap-2 text-xs font-mono">
-            <RefreshCw className="w-5 h-5 animate-spin text-purple-400" />
-            <span>Executing 16-run testing matrix on Python backend...</span>
+          <div className="h-64 flex flex-col items-center justify-center border border-zinc-800 bg-[#09090b] rounded-lg text-zinc-500 gap-2 text-xs font-mono">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            <span>Running 16-run testing matrix...</span>
           </div>
         ) : (
-          <div className="h-80 w-full pt-2">
+          <div className="h-72 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 10, right: 20, left: 0, bottom: 20 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f293d" vertical={false} />
+              <BarChart data={chartData} margin={{ top: 10, right: 15, left: -10, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                 <XAxis
                   dataKey="workload"
-                  stroke="#64748b"
-                  tick={{ fill: '#94a3b8', fontSize: 12, fontFamily: 'JetBrains Mono' }}
+                  stroke="#52525b"
+                  tick={{ fill: '#a1a1aa', fontSize: 11, fontFamily: 'monospace' }}
                 />
                 <YAxis
-                  stroke="#64748b"
-                  tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+                  stroke="#52525b"
+                  tick={{ fill: '#a1a1aa', fontSize: 10, fontFamily: 'monospace' }}
                   unit={metricMode === 'hit_ratio' ? '%' : ''}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend
-                  wrapperStyle={{ paddingTop: '10px', fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px', fontFamily: 'monospace' }}
                 />
-                <Bar dataKey="FIFO" fill="#F59E0B" radius={[4, 4, 0, 0]} name="FIFO" />
-                <Bar dataKey="LRU" fill="#06B6D4" radius={[4, 4, 0, 0]} name="LRU" />
-                <Bar dataKey="LFU" fill="#8B5CF6" radius={[4, 4, 0, 0]} name="LFU" />
-                <Bar dataKey="AdaptiveHybrid" fill="#10B981" radius={[4, 4, 0, 0]} name="AdaptiveHybrid" />
+                <Bar dataKey="FIFO" fill="#d97706" radius={[3, 3, 0, 0]} name="FIFO" />
+                <Bar dataKey="LRU" fill="#3b82f6" radius={[3, 3, 0, 0]} name="LRU" />
+                <Bar dataKey="LFU" fill="#8b5cf6" radius={[3, 3, 0, 0]} name="LFU" />
+                <Bar dataKey="AdaptiveHybrid" fill="#10b981" radius={[3, 3, 0, 0]} name="AdaptiveHybrid" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
       </div>
 
-      {/* Analytical Insights Footer */}
-      <div className="mt-4 pt-4 border-t border-gray-800/80 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
-        <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/80">
-          <div className="text-emerald-400 font-semibold mb-1 flex items-center gap-1.5">
-            <Trophy className="w-3.5 h-3.5" />
-            Looping Thrashing Resistance
+      {/* Highlights */}
+      <div className="mt-4 pt-4 border-t border-zinc-800/80 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+        <div className="p-3 rounded-lg bg-[#09090b] border border-zinc-800">
+          <div className="text-zinc-200 font-semibold mb-1 flex items-center gap-1.5">
+            <Trophy className="w-3.5 h-3.5 text-emerald-400" />
+            Loop Thrashing Immunity
           </div>
-          <p className="text-gray-400 text-[11px] leading-relaxed">
-            When loop sequence (15) exceeds RAM frames (10), FIFO and LRU fault on 100% of accesses. AdaptiveHybrid retains high-scoring resident pages, cutting EAT by &gt;54%.
+          <p className="text-zinc-500 text-[11px] leading-relaxed">
+            When loop sequence (15) exceeds frames (10), FIFO and LRU hit 0%. AdaptiveHybrid shields high-scoring pages, cutting EAT significantly.
           </p>
         </div>
 
-        <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/80">
-          <div className="text-cyan-400 font-semibold mb-1 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5" />
+        <div className="p-3 rounded-lg bg-[#09090b] border border-zinc-800">
+          <div className="text-zinc-200 font-semibold mb-1 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
             Dirty Penalty Savings (δ = 2.0)
           </div>
-          <p className="text-gray-400 text-[11px] leading-relaxed">
-            By assigning eviction cost $C(p) = S(p) + \delta$ to dirty pages, AdaptiveHybrid preferentially evicts clean pages, avoiding costly 10ms disk write-backs.
+          <p className="text-zinc-500 text-[11px] leading-relaxed">
+            Assigning $C(p) = S(p) + \delta$ to dirty pages avoids expensive 10ms disk write-backs by prioritizing clean pages when costs are close.
           </p>
         </div>
 
-        <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/80">
-          <div className="text-purple-400 font-semibold mb-1 flex items-center gap-1.5">
-            <TrendingDown className="w-3.5 h-3.5" />
-            Adaptive Parameter Tuning
+        <div className="p-3 rounded-lg bg-[#09090b] border border-zinc-800">
+          <div className="text-zinc-200 font-semibold mb-1 flex items-center gap-1.5">
+            <TrendingDown className="w-3.5 h-3.5 text-zinc-300" />
+            Dynamic λ Parameter Tuning
           </div>
-          <p className="text-gray-400 text-[11px] leading-relaxed">
-            Every $N=100$ accesses, $\lambda$ shifts dynamically: increasing towards LRU recency under high fault bursts ($r &gt; 10\%$) and decreasing towards LFU during stable locality.
+          <p className="text-zinc-500 text-[11px] leading-relaxed">
+            Every $N=100$ accesses, $\lambda$ balances LRU recency vs LFU frequency based on fault bursts and thrashing controller feedback.
           </p>
         </div>
       </div>
