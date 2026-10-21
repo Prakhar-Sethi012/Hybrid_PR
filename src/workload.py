@@ -6,6 +6,9 @@ Provides synthetic and realistic page access trace generation supporting:
 2. Looping reference patterns (repeated sequences)
 3. Uniform random reference patterns
 4. Zipfian Hot/Cold temporal locality patterns (80% requests target 20% pages)
+
+Stage 3 Update: Supports optionally generating (page_number, is_write: bool) tuples
+with a configurable write_probability (default 0.2).
 """
 
 import random
@@ -57,20 +60,35 @@ class WorkloadGenerator:
     Attributes:
         number_of_references (Optional[int]): Default length of generated traces.
         rng (random.Random): Dedicated pseudo-random number generator for reproducible traces.
+        write_probability (float): Default probability that an access is a write (default 0.2).
+        include_writes (bool): Whether to output (page_number, is_write) tuples by default.
     """
 
-    def __init__(self, number_of_references: Optional[int] = None, seed: Optional[int] = None):
+    def __init__(
+        self,
+        number_of_references: Optional[int] = None,
+        seed: Optional[int] = None,
+        write_probability: float = 0.2,
+        include_writes: bool = False,
+    ):
         """
         Initialize WorkloadGenerator.
 
         Args:
             number_of_references: Optional default trace length for methods where length is variable.
             seed: Optional integer seed for reproducible pseudo-random generation.
+            write_probability: Default probability that an access is a write (default 0.2 = 20%).
+            include_writes: If True, outputs tuples (page_number, is_write); if False, outputs int page numbers.
         """
         if number_of_references is not None and number_of_references < 0:
             raise ValueError(f"number_of_references must be >= 0, got {number_of_references}")
+        if not (0.0 <= write_probability <= 1.0):
+            raise ValueError(f"write_probability must be between 0.0 and 1.0, got {write_probability}")
+
         self.number_of_references: Optional[int] = number_of_references
         self.rng: random.Random = random.Random(seed)
+        self.write_probability: float = float(write_probability)
+        self.include_writes: bool = bool(include_writes)
 
     def set_seed(self, seed: Optional[int]) -> None:
         """Sets the random seed for reproducible traces."""
@@ -90,13 +108,34 @@ class WorkloadGenerator:
             "number_of_references was not specified during generator initialization or method invocation."
         )
 
+    def _attach_writes(
+        self,
+        pages: List[int],
+        include_writes: Optional[bool] = None,
+        write_probability: Optional[float] = None,
+    ) -> Union[List[int], List[Tuple[int, bool]]]:
+        """
+        Conditionally attaches write flags to a list of page integers.
+        """
+        should_include = self.include_writes if include_writes is None else bool(include_writes)
+        if not should_include:
+            return pages
+
+        p_write = self.write_probability if write_probability is None else float(write_probability)
+        if not (0.0 <= p_write <= 1.0):
+            raise ValueError(f"write_probability must be between 0.0 and 1.0, got {p_write}")
+
+        return [(page, self.rng.random() < p_write) for page in pages]
+
     def generate_sequential(
         self,
         start: int,
         end: int,
         inclusive: bool = True,
         num_references: Optional[int] = None,
-    ) -> List[int]:
+        include_writes: Optional[bool] = None,
+        write_probability: Optional[float] = None,
+    ) -> Union[List[int], List[Tuple[int, bool]]]:
         """
         Scans linearly through a range of pages.
 
@@ -107,9 +146,11 @@ class WorkloadGenerator:
             num_references: Optional total references to produce. If provided or if
                            self.number_of_references is set, cycles or slices the scan
                            to match this exact length. If neither is set, scans the range once.
+            include_writes: If True, returns List[Tuple[int, bool]]; if False, returns List[int].
+            write_probability: Probability of each reference being a write (defaults to 0.2).
 
         Returns:
-            List[int]: Array of page reference integers.
+            List[int] or List[Tuple[int, bool]]: Array of page references.
         """
         if start <= end:
             step = 1
@@ -126,22 +167,24 @@ class WorkloadGenerator:
         # Check if caller wants a specific total length
         target_len = num_references if num_references is not None else self.number_of_references
         if target_len is None:
-            return base_sequence
+            pages = base_sequence
+        else:
+            if target_len < 0:
+                raise ValueError(f"target references count must be >= 0, got {target_len}")
+            full_cycles = target_len // len(base_sequence)
+            remainder = target_len % len(base_sequence)
+            pages = (base_sequence * full_cycles) + base_sequence[:remainder]
 
-        if target_len < 0:
-            raise ValueError(f"target references count must be >= 0, got {target_len}")
-
-        # Cycle or slice base_sequence to achieve target_len
-        full_cycles = target_len // len(base_sequence)
-        remainder = target_len % len(base_sequence)
-        return (base_sequence * full_cycles) + base_sequence[:remainder]
+        return self._attach_writes(pages, include_writes=include_writes, write_probability=write_probability)
 
     def generate_loop(
         self,
         sequence: Sequence[int],
         iterations: Optional[int] = None,
         num_references: Optional[int] = None,
-    ) -> List[int]:
+        include_writes: Optional[bool] = None,
+        write_probability: Optional[float] = None,
+    ) -> Union[List[int], List[Tuple[int, bool]]]:
         """
         Repeats a specific sequence of pages.
 
@@ -152,9 +195,11 @@ class WorkloadGenerator:
                         num_references is also provided to truncate/pad.
             num_references: Optional explicit length of reference array to produce.
                            If iterations is None, repeats sequence until reaching num_references.
+            include_writes: If True, returns List[Tuple[int, bool]]; if False, returns List[int].
+            write_probability: Probability of each reference being a write (defaults to 0.2).
 
         Returns:
-            List[int]: Array of page reference integers.
+            List[int] or List[Tuple[int, bool]]: Array of page references.
         """
         seq_list = list(sequence)
         if not seq_list:
@@ -164,21 +209,22 @@ class WorkloadGenerator:
             if iterations < 0:
                 raise ValueError(f"iterations must be >= 0, got {iterations}")
             repeated = seq_list * iterations
-            if num_references is not None:
-                return repeated[:num_references]
-            return repeated
+            pages = repeated[:num_references] if num_references is not None else repeated
+        else:
+            target_len = self._resolve_num_references(num_references, fallback=len(seq_list))
+            full_cycles = target_len // len(seq_list)
+            remainder = target_len % len(seq_list)
+            pages = (seq_list * full_cycles) + seq_list[:remainder]
 
-        # If iterations is not provided, use num_references or self.number_of_references
-        target_len = self._resolve_num_references(num_references, fallback=len(seq_list))
-        full_cycles = target_len // len(seq_list)
-        remainder = target_len % len(seq_list)
-        return (seq_list * full_cycles) + seq_list[:remainder]
+        return self._attach_writes(pages, include_writes=include_writes, write_probability=write_probability)
 
     def generate_random(
         self,
         page_range: Union[int, Tuple[int, int], range, Sequence[int]],
         num_references: Optional[int] = None,
-    ) -> List[int]:
+        include_writes: Optional[bool] = None,
+        write_probability: Optional[float] = None,
+    ) -> Union[List[int], List[Tuple[int, bool]]]:
         """
         Uniformly distributed random page requests across the given page range.
 
@@ -186,16 +232,21 @@ class WorkloadGenerator:
             page_range: Page pool representation (int count, (low, high) tuple, range, or list).
             num_references: Number of page references to generate. Defaults to
                            self.number_of_references or the size of page_range.
+            include_writes: If True, returns List[Tuple[int, bool]]; if False, returns List[int].
+            write_probability: Probability of each reference being a write (defaults to 0.2).
 
         Returns:
-            List[int]: Array of uniformly chosen page reference integers.
+            List[int] or List[Tuple[int, bool]]: Array of page references.
         """
         pages = _parse_page_range(page_range)
         target_len = self._resolve_num_references(num_references, fallback=len(pages))
         if target_len == 0:
             return []
 
-        return [self.rng.choice(pages) for _ in range(target_len)]
+        sampled_pages = [self.rng.choice(pages) for _ in range(target_len)]
+        return self._attach_writes(
+            sampled_pages, include_writes=include_writes, write_probability=write_probability
+        )
 
     def generate_zipf_hot_cold(
         self,
@@ -204,17 +255,11 @@ class WorkloadGenerator:
         hot_request_ratio: float = 0.8,
         num_references: Optional[int] = None,
         zipf_alpha: Optional[float] = None,
-    ) -> List[int]:
+        include_writes: Optional[bool] = None,
+        write_probability: Optional[float] = None,
+    ) -> Union[List[int], List[Tuple[int, bool]]]:
         """
         Simulates temporal locality where 80% of requests target 20% of the pages.
-
-        The page address space is divided into:
-        - Hot pages: top 'hot_page_ratio' fraction of pages (default 20%).
-        - Cold pages: remaining '1 - hot_page_ratio' fraction of pages (default 80%).
-
-        Each memory reference selects from the hot pages with probability 'hot_request_ratio'
-        (default 80%) and from the cold pages with probability '1 - hot_request_ratio' (20%).
-        An optional 'zipf_alpha' parameter can be supplied to apply Zipf rank-skew within hot pages.
 
         Args:
             page_range: Page pool representation.
@@ -222,9 +267,11 @@ class WorkloadGenerator:
             hot_request_ratio: Probability of selecting a hot page (default 0.8 = 80%).
             num_references: Total references to generate.
             zipf_alpha: Optional exponent for Zipf distribution within hot pages.
+            include_writes: If True, returns List[Tuple[int, bool]]; if False, returns List[int].
+            write_probability: Probability of each reference being a write (defaults to 0.2).
 
         Returns:
-            List[int]: Array of page reference integers exhibiting temporal locality.
+            List[int] or List[Tuple[int, bool]]: Array of page references exhibiting temporal locality.
         """
         if not (0.0 < hot_page_ratio < 1.0):
             raise ValueError(f"hot_page_ratio must be strictly between 0 and 1, got {hot_page_ratio}")
@@ -238,14 +285,12 @@ class WorkloadGenerator:
 
         num_pages = len(pages)
         num_hot = max(1, int(round(num_pages * hot_page_ratio)))
-        # Ensure hot pages does not consume all pages if total pages > 1
         if num_hot >= num_pages and num_pages > 1:
             num_hot = num_pages - 1
 
         hot_pages = pages[:num_hot]
         cold_pages = pages[num_hot:]
 
-        # Calculate Zipf weights for hot pages if requested
         hot_weights = None
         if zipf_alpha is not None and len(hot_pages) > 1:
             raw_weights = [1.0 / ((i + 1) ** zipf_alpha) for i in range(len(hot_pages))]
@@ -255,17 +300,17 @@ class WorkloadGenerator:
         references: List[int] = []
         for _ in range(target_len):
             if not cold_pages or self.rng.random() < hot_request_ratio:
-                # Hot page selection
                 if hot_weights is not None:
                     chosen = self.rng.choices(hot_pages, weights=hot_weights, k=1)[0]
                 else:
                     chosen = self.rng.choice(hot_pages)
             else:
-                # Cold page selection
                 chosen = self.rng.choice(cold_pages)
             references.append(chosen)
 
-        return references
+        return self._attach_writes(
+            references, include_writes=include_writes, write_probability=write_probability
+        )
 
 
 # Module-level convenience functions using a shared default generator
@@ -277,10 +322,17 @@ def generate_sequential(
     end: int,
     inclusive: bool = True,
     num_references: Optional[int] = None,
-) -> List[int]:
+    include_writes: bool = False,
+    write_probability: float = 0.2,
+) -> Union[List[int], List[Tuple[int, bool]]]:
     """Scans linearly through a range of pages."""
     return _default_generator.generate_sequential(
-        start=start, end=end, inclusive=inclusive, num_references=num_references
+        start=start,
+        end=end,
+        inclusive=inclusive,
+        num_references=num_references,
+        include_writes=include_writes,
+        write_probability=write_probability,
     )
 
 
@@ -288,19 +340,32 @@ def generate_loop(
     sequence: Sequence[int],
     iterations: Optional[int] = None,
     num_references: Optional[int] = None,
-) -> List[int]:
+    include_writes: bool = False,
+    write_probability: float = 0.2,
+) -> Union[List[int], List[Tuple[int, bool]]]:
     """Repeats a specific sequence of pages."""
     return _default_generator.generate_loop(
-        sequence=sequence, iterations=iterations, num_references=num_references
+        sequence=sequence,
+        iterations=iterations,
+        num_references=num_references,
+        include_writes=include_writes,
+        write_probability=write_probability,
     )
 
 
 def generate_random(
     page_range: Union[int, Tuple[int, int], range, Sequence[int]],
     num_references: Optional[int] = None,
-) -> List[int]:
+    include_writes: bool = False,
+    write_probability: float = 0.2,
+) -> Union[List[int], List[Tuple[int, bool]]]:
     """Uniformly distributed random page requests."""
-    return _default_generator.generate_random(page_range=page_range, num_references=num_references)
+    return _default_generator.generate_random(
+        page_range=page_range,
+        num_references=num_references,
+        include_writes=include_writes,
+        write_probability=write_probability,
+    )
 
 
 def generate_zipf_hot_cold(
@@ -309,7 +374,9 @@ def generate_zipf_hot_cold(
     hot_request_ratio: float = 0.8,
     num_references: Optional[int] = None,
     zipf_alpha: Optional[float] = None,
-) -> List[int]:
+    include_writes: bool = False,
+    write_probability: float = 0.2,
+) -> Union[List[int], List[Tuple[int, bool]]]:
     """Simulates temporal locality where 80% of requests target 20% of the pages."""
     return _default_generator.generate_zipf_hot_cold(
         page_range=page_range,
@@ -317,4 +384,6 @@ def generate_zipf_hot_cold(
         hot_request_ratio=hot_request_ratio,
         num_references=num_references,
         zipf_alpha=zipf_alpha,
+        include_writes=include_writes,
+        write_probability=write_probability,
     )

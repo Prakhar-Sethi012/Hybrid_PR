@@ -131,6 +131,35 @@ class TestWorkloadGenerator(unittest.TestCase):
         zipf_trace = generate_zipf_hot_cold(page_range=30, num_references=40)
         self.assertEqual(len(zipf_trace), 40)
 
+    def test_workload_with_writes(self):
+        # Sequential with writes
+        seq_writes = self.gen.generate_sequential(0, 3, include_writes=True, write_probability=0.5)
+        self.assertEqual(len(seq_writes), 4)
+        for item in seq_writes:
+            self.assertIsInstance(item, tuple)
+            self.assertEqual(len(item), 2)
+            self.assertIsInstance(item[0], int)
+            self.assertIsInstance(item[1], bool)
+
+        # Loop with writes
+        loop_writes = self.gen.generate_loop([1, 2], iterations=3, include_writes=True)
+        self.assertEqual(len(loop_writes), 6)
+        self.assertIsInstance(loop_writes[0], tuple)
+
+        # Random with writes
+        rand_writes = self.gen.generate_random(10, num_references=50, include_writes=True)
+        self.assertEqual(len(rand_writes), 50)
+        self.assertIsInstance(rand_writes[0], tuple)
+
+    def test_write_probability_statistical(self):
+        # 10,000 references with default write_probability=0.2 (20% writes)
+        gen = WorkloadGenerator(seed=999, write_probability=0.2, include_writes=True)
+        trace = gen.generate_random(50, num_references=10000)
+        writes = sum(1 for _, is_w in trace if is_w)
+        write_ratio = writes / 10000
+        # Expected 20% +/- 2%
+        self.assertAlmostEqual(write_ratio, 0.20, delta=0.02)
+
 
 if __name__ == "__main__":
     unittest.main()

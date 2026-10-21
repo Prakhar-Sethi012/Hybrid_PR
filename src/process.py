@@ -28,11 +28,13 @@ class PageTableEntry:
         dirty: bool = False,
         frame_number: Optional[int] = None,
         referenced: bool = False,
+        hybrid_score: float = 0.0,
     ):
         self.valid: bool = bool(valid)
         self.dirty: bool = bool(dirty)
         self.frame_number: Optional[int] = frame_number
         self.referenced: bool = bool(referenced)
+        self.hybrid_score: float = float(hybrid_score)
 
     def __getitem__(self, key: str) -> Any:
         if hasattr(self, key):
@@ -45,6 +47,8 @@ class PageTableEntry:
                 setattr(self, key, bool(value))
             elif key == "frame_number":
                 setattr(self, key, int(value) if value is not None else None)
+            elif key == "hybrid_score":
+                setattr(self, key, float(value))
             else:
                 setattr(self, key, value)
         else:
@@ -57,10 +61,10 @@ class PageTableEntry:
         return getattr(self, key, default)
 
     def keys(self):
-        return ("valid", "dirty", "frame_number", "referenced")
+        return ("valid", "dirty", "frame_number", "referenced", "hybrid_score")
 
     def values(self):
-        return (self.valid, self.dirty, self.frame_number, self.referenced)
+        return (self.valid, self.dirty, self.frame_number, self.referenced, self.hybrid_score)
 
     def items(self):
         return [
@@ -68,6 +72,7 @@ class PageTableEntry:
             ("dirty", self.dirty),
             ("frame_number", self.frame_number),
             ("referenced", self.referenced),
+            ("hybrid_score", self.hybrid_score),
         ]
 
     def to_dict(self) -> Dict[str, Any]:
@@ -77,12 +82,14 @@ class PageTableEntry:
             "dirty": self.dirty,
             "frame_number": self.frame_number,
             "referenced": self.referenced,
+            "hybrid_score": self.hybrid_score,
         }
 
     def __repr__(self) -> str:
         return (
             f"PageTableEntry(valid={self.valid}, dirty={self.dirty}, "
-            f"frame_number={self.frame_number}, referenced={self.referenced})"
+            f"frame_number={self.frame_number}, referenced={self.referenced}, "
+            f"score={self.hybrid_score:.4f})"
         )
 
     def __eq__(self, other: Any) -> bool:

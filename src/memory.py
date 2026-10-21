@@ -32,6 +32,7 @@ class Frame:
         self.last_referenced_time: float = 0.0
         self.reference_bit: bool = False
         self.dirty_bit: bool = False
+        self.hybrid_score: float = 0.0
 
     @property
     def frame_number(self) -> int:
@@ -43,13 +44,20 @@ class Frame:
         """True if the frame is not currently occupied."""
         return not self.is_occupied
 
-    def allocate(self, process_id: int, page_number: int, dirty: bool = False) -> None:
+    def allocate(
+        self,
+        process_id: int,
+        page_number: int,
+        dirty: bool = False,
+        hybrid_score: float = 1.0,
+    ) -> None:
         """Marks the frame as occupied and binds it to a process and page."""
         self.process_id = int(process_id)
         self.page_number = int(page_number)
         self.is_occupied = True
         self.reference_bit = True
         self.dirty_bit = bool(dirty)
+        self.hybrid_score = float(hybrid_score)
 
     def clear(self) -> None:
         """Frees the frame and clears associated metadata."""
@@ -59,6 +67,7 @@ class Frame:
         self.last_referenced_time = 0.0
         self.reference_bit = False
         self.dirty_bit = False
+        self.hybrid_score = 0.0
 
     def __repr__(self) -> str:
         if self.is_occupied:
@@ -138,6 +147,7 @@ class MemoryManager:
         page_number: int,
         frame_id: Optional[int] = None,
         dirty: bool = False,
+        hybrid_score: float = 1.0,
     ) -> Optional[int]:
         """
         Allocates a physical frame to the given process_id and page_number.
@@ -163,7 +173,12 @@ class MemoryManager:
 
         self.free_frames.remove(target_id)
         self.occupied_frames.add(target_id)
-        self.frames[target_id].allocate(process_id=process_id, page_number=page_number, dirty=dirty)
+        self.frames[target_id].allocate(
+            process_id=process_id,
+            page_number=page_number,
+            dirty=dirty,
+            hybrid_score=hybrid_score,
+        )
         return target_id
 
     def free_frame(self, frame_id: int) -> Optional[Frame]:

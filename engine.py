@@ -1,5 +1,6 @@
 """
-Root forwarding module for SimulationEngine, SimulationClock, and PerformanceMetrics.
+Root forwarding module for SimulationEngine, SimulationClock, PerformanceMetrics,
+AdaptiveParameterController, and compute_decayed_score.
 Allows `from engine import ...` and `import engine`.
 """
 
@@ -8,6 +9,8 @@ from src.engine import (
     PerformanceMetrics,
     SimulationEngine,
     AccessResult,
+    AdaptiveParameterController,
+    compute_decayed_score,
 )
 
 __all__ = [
@@ -15,4 +18,6 @@ __all__ = [
     "PerformanceMetrics",
     "SimulationEngine",
     "AccessResult",
+    "AdaptiveParameterController",
+    "compute_decayed_score",
 ]
