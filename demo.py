@@ -1,5 +1,5 @@
 """
-Demo Script for Stage 1, 2, and 3 of the Discrete-Event OS Simulator.
+Demo Script for Stages 1, 2, 3, and 4 of the Discrete-Event OS Simulator.
 Demonstrates:
 - Workload Generator patterns & optional write flags (Stage 1 & 3)
 - Process & PageTable structures (Stage 1)
@@ -7,6 +7,7 @@ Demonstrates:
 - SimulationClock, PerformanceMetrics, and Access Handler (Stage 2)
 - Adaptive Hybrid Page Replacement: LRFU recursive score decay, Cost C(p) victim selection,
   and dynamic lambda parameter tuning (Stage 3).
+- Thrashing Control and Round Robin Scheduling (Stage 4).
 """
 
 from src.workload import (
@@ -23,8 +24,10 @@ from src.engine import (
     PerformanceMetrics,
     SimulationEngine,
     AdaptiveParameterController,
+    ThrashingController,
     compute_decayed_score,
 )
+from src.scheduler import CpuScheduler
 
 
 def print_section(title: str):
@@ -141,9 +144,81 @@ def demo_dynamic_lambda_tuning():
               f"(r={entry['fault_rate']:.2f}) -> lambda: {entry['old_lambda']:.2f} => {entry['new_lambda']:.2f}")
 
 
+def demo_stage4_thrashing_and_scheduling():
+    print_section("5. THRASHING CONTROL & ROUND ROBIN SCHEDULING (STAGE 4)")
+    mem = MemoryManager(frame_count=8)
+    p1 = Process(process_id=1, name="ThrashingWorker")
+    p2 = Process(process_id=2, name="StableWorker")
+
+    engine = SimulationEngine(
+        memory_manager=mem,
+        processes=[p1, p2],
+        window_size=10,
+        upper_fault_threshold=0.20,
+        suspension_duration=2,
+    )
+    scheduler = CpuScheduler(
+        processes=[p1, p2],
+        time_quantum=5,
+        engine=engine,
+    )
+
+    # Pre-seed resident page 99 for P2 so all its references hit
+    engine.execute_access(p2, page_number=99)
+    engine.controller.reset()
+    engine.thrashing_controller.reset()
+    engine.metrics.reset()
+
+    # Workloads
+    p1_trace = [10, 11, 12, 13, 14, 15, 16]  # High faults
+    p2_trace = [99] * 25                     # Pure hits
+
+    scheduler.assign_trace(p1, p1_trace)
+    scheduler.assign_trace(p2, p2_trace)
+
+    print("Setup: Multiprogramming (P1, P2), Window size N=10, Threshold=20%, Quantum=5 accesses/turn")
+    print(f"Initial State: P1 suspended={p1.is_suspended}, P2 suspended={p2.is_suspended}\n")
+
+    # Turn 1: P1 executes 5 memory accesses
+    turn1 = scheduler.step()
+    f1 = sum(1 for r in turn1 if not r.is_hit)
+    print(f"Turn 1: {p1.name} executed {len(turn1)} accesses -> faults={f1}/{len(turn1)}")
+
+    # Turn 2: P2 executes 5 memory accesses (Window 1 completes at access 10)
+    turn2 = scheduler.step()
+    f2 = sum(1 for r in turn2 if not r.is_hit)
+    print(f"Turn 2: {p2.name} executed {len(turn2)} accesses -> faults={f2}/{len(turn2)}")
+
+    print(f"\n[End of Window 1 Evaluation]:")
+    print(f"  P1 fault rate: 100% > 20% threshold -> FLAGGED AS THRASHING!")
+    print(f"  P1 State: is_suspended={p1.is_suspended}, suspension_timer={p1.suspension_timer}")
+    print(f"  System Thrashing Suspensions recorded: {engine.metrics.thrashing_suspensions}")
+
+    # Next Turn: Scheduler skips P1!
+    next_proc = scheduler.get_next_process()
+    print(f"\nNext scheduled process: {next_proc.name} (P1 skipped because is_suspended == True)")
+
+    # Run cooling windows 2 and 3
+    print("\nExecuting cooling Window 2 and Window 3 via StableWorker...")
+    scheduler.step()
+    scheduler.step()  # Window 2 ends
+    print(f"  End of Window 2: P1 is_suspended={p1.is_suspended}, suspension_timer={p1.suspension_timer}")
+
+    scheduler.step()
+    scheduler.step()  # Window 3 ends -> timer reaches 0 -> un-suspended!
+    print(f"  End of Window 3: P1 is_suspended={p1.is_suspended}, suspension_timer={p1.suspension_timer} (RECOVERED!)")
+
+    # Scheduler picks P1 back up!
+    next_proc_recovered = scheduler.get_next_process(check_has_trace=True)
+    print(f"\nNext scheduled process: {next_proc_recovered.name} (Picked back up by scheduler!)")
+    res_final = scheduler.step()
+    print(f"  P1 resumed and executed remaining accesses: {[r.page_number for r in res_final]}")
+
+
 if __name__ == "__main__":
     demo_workload_generator()
     demo_hybrid_replacement_and_cost()
     demo_lrfu_score_tracking()
     demo_dynamic_lambda_tuning()
-    print_section("STAGE 1, 2 & 3 DEMONSTRATION COMPLETE")
+    demo_stage4_thrashing_and_scheduling()
+    print_section("STAGES 1, 2, 3 & 4 DEMONSTRATION COMPLETE")

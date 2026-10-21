@@ -6,10 +6,11 @@ and Cost-based C(p) victim selection with dirty page penalties.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from .memory import Frame, MemoryManager
 from .process import Process, PageTableEntry
+from .scheduler import CpuScheduler
 
 
 def compute_decayed_score(score: float, lambda_val: float, delta_t: float) -> float:
@@ -166,12 +167,14 @@ class PerformanceMetrics:
         page_hits (int): Number of memory references satisfied in memory.
         page_faults (int): Number of page faults encountered.
         dirty_write_backs (int): Number of dirty pages written back to disk on eviction.
+        thrashing_suspensions (int): Number of times a process was forcibly suspended due to thrashing.
     """
 
     total_accesses: int = 0
     page_hits: int = 0
     page_faults: int = 0
     dirty_write_backs: int = 0
+    thrashing_suspensions: int = 0
 
     @property
     def hit_ratio(self) -> float:
@@ -189,6 +192,7 @@ class PerformanceMetrics:
         self.page_hits = 0
         self.page_faults = 0
         self.dirty_write_backs = 0
+        self.thrashing_suspensions = 0
 
     def to_dict(self) -> dict:
         """Returns metrics as a dictionary."""
@@ -197,6 +201,7 @@ class PerformanceMetrics:
             "page_hits": self.page_hits,
             "page_faults": self.page_faults,
             "dirty_write_backs": self.dirty_write_backs,
+            "thrashing_suspensions": self.thrashing_suspensions,
             "hit_ratio": self.hit_ratio,
             "fault_ratio": self.fault_ratio,
         }
@@ -205,7 +210,182 @@ class PerformanceMetrics:
         return (
             f"PerformanceMetrics(accesses={self.total_accesses}, hits={self.page_hits}, "
             f"faults={self.page_faults}, write_backs={self.dirty_write_backs}, "
+            f"suspensions={self.thrashing_suspensions}, "
             f"hit_rate={self.hit_ratio:.2%})"
+        )
+
+
+class ThrashingController:
+    """
+    Thrashing Controller for Stage 4: Thrashing Control & Multiprogramming Regulation.
+
+    Monitors per-process page fault rates (r_i) over window_size (N) memory references.
+    If an active process's r_i exceeds upper_fault_threshold (e.g. 0.20 or 20%),
+    the process is flagged as thrashing and suspended for suspension_duration (default 2)
+    tuning windows to allow memory to cool down.
+
+    Recovery logic:
+    At the end of every window N, decrements the suspension_timer for all suspended processes.
+    If the timer hits 0, is_suspended is set to False so the scheduler can pick it back up.
+
+    Attributes:
+        window_size (int): Evaluation interval N in system memory accesses (matches lambda controller).
+        upper_fault_threshold (float): Fault rate threshold above which thrashing is flagged (default 0.20).
+        suspension_duration (int): Number of windows a suspended process must sit out (default 2).
+        window_accesses (int): Number of memory references recorded in the current window.
+        window_count (int): Total number of evaluation windows completed.
+        process_accesses (Dict[int, int]): Per-process access counts in the current window.
+        process_faults (Dict[int, int]): Per-process fault counts in the current window.
+        suspension_history (List[dict]): Log of window evaluations and suspension events.
+    """
+
+    def __init__(
+        self,
+        window_size: int = 100,
+        upper_fault_threshold: float = 0.20,
+        suspension_duration: int = 2,
+        processes: Optional[Union[Dict[int, Process], Sequence[Process]]] = None,
+        metrics: Optional[PerformanceMetrics] = None,
+    ):
+        if window_size <= 0:
+            raise ValueError(f"window_size must be positive, got {window_size}")
+        if not (0.0 <= upper_fault_threshold <= 1.0):
+            raise ValueError(
+                f"upper_fault_threshold must be between 0.0 and 1.0, got {upper_fault_threshold}"
+            )
+        if suspension_duration <= 0:
+            raise ValueError(f"suspension_duration must be positive, got {suspension_duration}")
+
+        self.window_size: int = int(window_size)
+        self.upper_fault_threshold: float = float(upper_fault_threshold)
+        self.suspension_duration: int = int(suspension_duration)
+
+        self.processes: Optional[Union[Dict[int, Process], Sequence[Process]]] = processes
+        self.metrics: Optional[PerformanceMetrics] = metrics
+
+        self.window_accesses: int = 0
+        self.window_count: int = 0
+        self.process_accesses: Dict[int, int] = {}
+        self.process_faults: Dict[int, int] = {}
+        self.suspension_history: List[dict] = []
+
+    def record_access(
+        self,
+        process_id: int,
+        is_fault: bool,
+        processes: Optional[Union[Dict[int, Process], Sequence[Process]]] = None,
+        metrics: Optional[PerformanceMetrics] = None,
+    ) -> Optional[dict]:
+        """
+        Records a memory reference for a process. If window limit is reached, triggers window evaluation.
+
+        Returns:
+            Optional[dict]: Window evaluation report if window completed, otherwise None.
+        """
+        pid = int(process_id)
+        self.window_accesses += 1
+        self.process_accesses[pid] = self.process_accesses.get(pid, 0) + 1
+        if is_fault:
+            self.process_faults[pid] = self.process_faults.get(pid, 0) + 1
+
+        if self.window_accesses >= self.window_size:
+            return self.evaluate(processes=processes, metrics=metrics)
+        return None
+
+    def evaluate(
+        self,
+        processes: Optional[Union[Dict[int, Process], Sequence[Process]]] = None,
+        metrics: Optional[PerformanceMetrics] = None,
+    ) -> dict:
+        """
+        Executes window evaluation at the end of every window N:
+        1. Recovery: Decrement suspension_timer for all currently suspended processes.
+           If it hits 0, set is_suspended = False so the scheduler picks it back up.
+        2. Thrashing Detection: Evaluate all active processes that executed in this window.
+           If r_i > upper_fault_threshold, flag it as thrashing:
+           set is_suspended = True, set suspension_timer = suspension_duration (default 2),
+           and increment metrics.thrashing_suspensions.
+        3. Resets window counters for the next window.
+
+        Returns:
+            dict: Summary report of this window evaluation.
+        """
+        target_procs = processes if processes is not None else self.processes
+        if target_procs is None:
+            proc_list: List[Process] = []
+        elif isinstance(target_procs, dict):
+            proc_list = list(target_procs.values())
+        else:
+            proc_list = list(target_procs)
+
+        target_metrics = metrics if metrics is not None else self.metrics
+        self.window_count += 1
+
+        recovered: List[int] = []
+        newly_suspended: List[int] = []
+        fault_rates: Dict[int, float] = {}
+
+        # 1. Recovery: Decrement suspension_timer for currently suspended processes
+        for proc in proc_list:
+            if proc.is_suspended:
+                proc.suspension_timer -= 1
+                if proc.suspension_timer <= 0:
+                    proc.suspension_timer = 0
+                    proc.is_suspended = False
+                    recovered.append(proc.process_id)
+
+        # 2. Thrashing detection: Evaluate active processes that ran in this window
+        for proc in proc_list:
+            if not proc.is_suspended:
+                acc = self.process_accesses.get(proc.process_id, 0)
+                if acc > 0:
+                    faults = self.process_faults.get(proc.process_id, 0)
+                    r_i = faults / acc
+                    fault_rates[proc.process_id] = r_i
+                    if r_i > self.upper_fault_threshold:
+                        proc.is_suspended = True
+                        proc.suspension_timer = self.suspension_duration
+                        newly_suspended.append(proc.process_id)
+                        if target_metrics is not None:
+                            target_metrics.thrashing_suspensions += 1
+
+        summary = {
+            "window": self.window_count,
+            "window_size": self.window_size,
+            "fault_rates": fault_rates,
+            "newly_suspended": newly_suspended,
+            "recovered": recovered,
+        }
+        self.suspension_history.append(summary)
+
+        # 3. Reset window counters
+        self.window_accesses = 0
+        self.process_accesses.clear()
+        self.process_faults.clear()
+
+        return summary
+
+    def get_fault_rate(self, process_id: int) -> float:
+        """Returns the current window fault rate for a given process, or 0.0."""
+        acc = self.process_accesses.get(process_id, 0)
+        if acc == 0:
+            return 0.0
+        return self.process_faults.get(process_id, 0) / acc
+
+    def reset(self) -> None:
+        """Resets window counters and evaluation history."""
+        self.window_accesses = 0
+        self.window_count = 0
+        self.process_accesses.clear()
+        self.process_faults.clear()
+        self.suspension_history.clear()
+
+    def __repr__(self) -> str:
+        return (
+            f"ThrashingController(window_size={self.window_size}, "
+            f"threshold={self.upper_fault_threshold:.2%}, "
+            f"duration={self.suspension_duration}, "
+            f"window_accesses={self.window_accesses}/{self.window_size})"
         )
 
 
@@ -242,15 +422,17 @@ class SimulationEngine:
     Core Simulation Engine and Memory Access Handler.
 
     Coordinates physical memory allocation, process page table lookups,
-    simulation clock advancement, metrics tracking, and the Adaptive Hybrid
-    Page Replacement algorithm with dynamic lambda parameter tuning.
+    simulation clock advancement, metrics tracking, Adaptive Hybrid
+    Page Replacement with dynamic lambda parameter tuning, and Thrashing Control.
 
     Attributes:
         memory_manager (MemoryManager): Physical memory manager tracking frame states.
         processes (Dict[int, Process]): Map of process_id -> Process participating in simulation.
-        metrics (PerformanceMetrics): Tracker for access counts, hits, faults, and write-backs.
+        metrics (PerformanceMetrics): Tracker for access counts, hits, faults, write-backs, and suspensions.
         clock (SimulationClock): Monotonically increasing clock incremented per memory access.
         controller (AdaptiveParameterController): Controller handling lambda tuning & delta cost.
+        thrashing_controller (ThrashingController): Controller regulating thrashing & multiprogramming.
+        scheduler (Optional[CpuScheduler]): Optional Round Robin CPU scheduler.
     """
 
     def __init__(
@@ -260,9 +442,13 @@ class SimulationEngine:
         metrics: Optional[PerformanceMetrics] = None,
         clock: Optional[SimulationClock] = None,
         controller: Optional[AdaptiveParameterController] = None,
+        thrashing_controller: Optional[ThrashingController] = None,
+        scheduler: Optional[Any] = None,
         window_size: int = 100,
         lambda_value: float = 0.5,
         delta: float = 2.0,
+        upper_fault_threshold: float = 0.20,
+        suspension_duration: int = 2,
     ):
         """
         Initialize SimulationEngine.
@@ -273,9 +459,13 @@ class SimulationEngine:
             metrics: Optional PerformanceMetrics instance (defaults to a new tracker).
             clock: Optional SimulationClock instance (defaults to a new clock starting at 0).
             controller: Optional AdaptiveParameterController (defaults to new instance).
-            window_size: Access window N for lambda tuning (default 100).
+            thrashing_controller: Optional ThrashingController (defaults to new instance).
+            scheduler: Optional CpuScheduler instance.
+            window_size: Access window N for lambda tuning & thrashing control (default 100).
             lambda_value: Initial lambda weighting parameter (default 0.5).
             delta: Dirty page penalty for eviction cost C(p) (default 2.0).
+            upper_fault_threshold: Page fault rate threshold triggering thrashing suspension (default 0.20).
+            suspension_duration: Number of windows a thrashing process remains suspended (default 2).
         """
         self.memory_manager: MemoryManager = memory_manager
         self.processes: Dict[int, Process] = {}
@@ -294,6 +484,21 @@ class SimulationEngine:
                 lambda_value=lambda_value,
                 delta=delta,
             )
+
+        if thrashing_controller is not None:
+            self.thrashing_controller: ThrashingController = thrashing_controller
+        else:
+            self.thrashing_controller = ThrashingController(
+                window_size=window_size,
+                upper_fault_threshold=upper_fault_threshold,
+                suspension_duration=suspension_duration,
+                processes=self.processes,
+                metrics=self.metrics,
+            )
+
+        self.scheduler: Optional[Any] = scheduler
+        if self.scheduler is not None and getattr(self.scheduler, "engine", None) is None:
+            self.scheduler.engine = self
 
     @property
     def lambda_value(self) -> float:
@@ -321,6 +526,17 @@ class SimulationEngine:
     @window_size.setter
     def window_size(self, val: int) -> None:
         self.controller.window_size = int(val)
+        if hasattr(self, "thrashing_controller") and self.thrashing_controller is not None:
+            self.thrashing_controller.window_size = int(val)
+
+    @property
+    def upper_fault_threshold(self) -> float:
+        """Page fault rate threshold triggering thrashing suspension."""
+        return self.thrashing_controller.upper_fault_threshold
+
+    @upper_fault_threshold.setter
+    def upper_fault_threshold(self, val: float) -> None:
+        self.thrashing_controller.upper_fault_threshold = float(val)
 
     def add_process(self, process: Process) -> None:
         """Registers a process with the simulation engine."""
@@ -591,6 +807,12 @@ class SimulationEngine:
 
         # 5. Parameter Controller window tracking & dynamic lambda tuning
         self.controller.record_access(is_fault=not is_hit)
+        self.thrashing_controller.record_access(
+            process_id=proc.process_id,
+            is_fault=not is_hit,
+            processes=self.processes,
+            metrics=self.metrics,
+        )
 
         return result
 
@@ -620,11 +842,33 @@ class SimulationEngine:
             results.append(self.execute_access(process=process, page_number=p_num, is_write=is_w))
         return results
 
+    def run_scheduler(
+        self,
+        scheduler: Optional[Any] = None,
+        max_turns: Optional[int] = None,
+        max_accesses: Optional[int] = None,
+    ) -> List[AccessResult]:
+        """
+        Executes Round Robin multiprogramming via the specified or default CpuScheduler.
+
+        Returns:
+            List[AccessResult]: Log of all executed memory references.
+        """
+        sched = scheduler if scheduler is not None else self.scheduler
+        if sched is None:
+            raise ValueError("No CpuScheduler specified for simulation engine.")
+        return sched.run(engine=self, max_turns=max_turns, max_accesses=max_accesses)
+
     def reset(self) -> None:
-        """Resets engine clock, metrics, physical memory, controller, and all process page tables."""
+        """Resets engine clock, metrics, physical memory, controllers, and all process page tables."""
         self.clock.reset()
         self.metrics.reset()
         self.memory_manager.reset()
         self.controller.reset()
+        if hasattr(self, "thrashing_controller") and self.thrashing_controller is not None:
+            self.thrashing_controller.reset()
         for proc in self.processes.values():
             proc.page_table.clear()
+            proc.is_suspended = False
+            proc.suspension_timer = 0
+

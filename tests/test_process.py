@@ -87,6 +87,28 @@ class TestProcessAndPageTable(unittest.TestCase):
         self.assertFalse(proc.is_page_valid(999))
         self.assertIsNone(proc.get_page_entry(999))
 
+    def test_process_suspension_state_updates(self):
+        # Default state
+        p = Process(process_id=2)
+        self.assertFalse(p.is_suspended)
+        self.assertEqual(p.suspension_timer, 0)
+
+        # Custom initialization
+        p_init = Process(process_id=3, is_suspended=True, suspension_timer=2)
+        self.assertTrue(p_init.is_suspended)
+        self.assertEqual(p_init.suspension_timer, 2)
+
+        # State modifications & helper methods
+        p.suspend(duration=2)
+        self.assertTrue(p.is_suspended)
+        self.assertEqual(p.suspension_timer, 2)
+        self.assertIn("suspended", repr(p))
+
+        p.resume()
+        self.assertFalse(p.is_suspended)
+        self.assertEqual(p.suspension_timer, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

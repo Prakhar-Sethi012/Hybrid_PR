@@ -3,6 +3,7 @@ Adaptive Hybrid Page Replacement Simulator package.
 Stage 1: Workload Generator, Process Page Tables, and Physical Memory Management.
 Stage 2: Memory Access Handler and Simulation Engine.
 Stage 3: Adaptive Hybrid Page Replacement Algorithm and Parameter Controller.
+Stage 4: Thrashing Control and Round Robin Scheduling.
 """
 
 from src.workload import (
@@ -14,6 +15,7 @@ from src.workload import (
 )
 from src.process import Process, PageTable, PageTableEntry
 from src.memory import MemoryManager, Frame
+from src.scheduler import CpuScheduler
 from src.engine import (
     SimulationClock,
     PerformanceMetrics,
@@ -21,6 +23,7 @@ from src.engine import (
     AccessResult,
     AdaptiveParameterController,
     compute_decayed_score,
+    ThrashingController,
 )
 
 __all__ = [
@@ -40,4 +43,6 @@ __all__ = [
     "AccessResult",
     "AdaptiveParameterController",
     "compute_decayed_score",
+    "ThrashingController",
+    "CpuScheduler",
 ]

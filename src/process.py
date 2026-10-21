@@ -201,19 +201,41 @@ class Process:
         process_id (int): Unique identifier for the process.
         name (str): Human-readable process label.
         page_table (PageTable): The process's private page table (hash map).
+        is_suspended (bool): Indicates if the process is suspended due to thrashing.
+        suspension_timer (int): Number of tuning windows the process must remain suspended.
     """
 
-    def __init__(self, process_id: int, name: Optional[str] = None):
+    def __init__(
+        self,
+        process_id: int,
+        name: Optional[str] = None,
+        is_suspended: bool = False,
+        suspension_timer: int = 0,
+    ):
         """
         Initialize Process.
 
         Args:
             process_id: Unique integer process ID.
             name: Optional descriptive name (defaults to 'Process-<process_id>').
+            is_suspended: Initial suspension status (default False).
+            suspension_timer: Initial suspension timer in tuning windows (default 0).
         """
         self.process_id: int = int(process_id)
         self.name: str = name if name is not None else f"Process-{process_id}"
         self.page_table: PageTable = PageTable()
+        self.is_suspended: bool = bool(is_suspended)
+        self.suspension_timer: int = int(suspension_timer)
+
+    def suspend(self, duration: int = 2) -> None:
+        """Suspends the process for a specified number of windows (default 2)."""
+        self.is_suspended = True
+        self.suspension_timer = int(duration)
+
+    def resume(self) -> None:
+        """Resumes the process and clears its suspension timer."""
+        self.is_suspended = False
+        self.suspension_timer = 0
 
     def get_page_entry(self, page_number: int) -> Optional[PageTableEntry]:
         """Retrieves page table entry for a virtual page, or None if unmapped."""
@@ -247,4 +269,5 @@ class Process:
         return self.page_table.invalidate(page_number)
 
     def __repr__(self) -> str:
-        return f"Process(process_id={self.process_id}, pages_tracked={len(self.page_table)})"
+        suspended_str = f", suspended(timer={self.suspension_timer})" if self.is_suspended else ""
+        return f"Process(process_id={self.process_id}, pages_tracked={len(self.page_table)}{suspended_str})"
