@@ -1,91 +1,95 @@
 # Discrete-Event OS Simulator: Adaptive Hybrid Page Replacement
 
-## Stage 1: Workload Generation & Base Memory Data Structures
-
-This stage establishes the foundational building blocks for the discrete-event OS simulator:
-1. **Workload Generator**: Synthetic memory reference trace generator supporting four canonical reference patterns.
-2. **Process & PageTable**: Per-process address space mapping virtual pages to valid/dirty states.
-3. **Physical Memory Manager**: Physical frame allocation and tracking (free vs. occupied).
-
-> **Modular Design Constraint**: Replacement policies and fault handlers are intentionally deferred to Stage 2.
+A modular discrete-event operating system memory simulator built in Python to evaluate and benchmark the **Adaptive Hybrid Page Replacement** algorithm.
 
 ---
 
-### Project Structure
+## Architecture Overview
 
 ```
 Hybrid_PR/
 ├── src/
-│   ├── __init__.py         # Package root exports
-│   ├── workload.py         # WorkloadGenerator and trace pattern functions
-│   ├── process.py          # Process, PageTable, and PageTableEntry
-│   └── memory.py           # Frame and MemoryManager
+│   ├── __init__.py         # Package root exports (Stages 1 & 2)
+│   ├── workload.py         # WorkloadGenerator and reference patterns (Stage 1)
+│   ├── process.py          # Process, PageTable, and PageTableEntry (Stage 1)
+│   ├── memory.py           # Frame and MemoryManager (Stage 1)
+│   └── engine.py           # SimulationClock, PerformanceMetrics, SimulationEngine (Stage 2)
 ├── tests/
 │   ├── __init__.py
 │   ├── test_workload.py    # Unit tests for 4 reference patterns
 │   ├── test_process.py     # Unit tests for Process & PageTable
 │   ├── test_memory.py      # Unit tests for MemoryManager & Frame tracking
-│   └── test_integration.py # End-to-end integration test
+│   ├── test_engine.py      # Unit tests for Stage 2 access handler & metrics
+│   └── test_integration.py # Integration tests
 ├── workload.py             # Root forwarding module
 ├── process.py              # Root forwarding module
 ├── memory.py               # Root forwarding module
+├── engine.py               # Root forwarding module
 ├── demo.py                 # Interactive demonstration script
 └── README.md
 ```
 
 ---
 
-### Architecture Specification
+## Stage 1: Workload Generation & Base Memory Data Structures
 
-#### 1. Workload Generator (`src.workload`)
+1. **Workload Generator (`src.workload`)**:
+   - `generate_sequential(start, end)`: Scans linearly through page address range.
+   - `generate_loop(sequence, iterations)`: Repeats a specific sequence of pages.
+   - `generate_random(page_range)`: Uniformly distributed random page requests.
+   - `generate_zipf_hot_cold(page_range)`: Simulates temporal locality where 80% of requests target 20% of the pages.
 
-- **Class**: `WorkloadGenerator(number_of_references: Optional[int] = None, seed: Optional[int] = None)`
-  - `generate_sequential(start: int, end: int, inclusive: bool = True, num_references: Optional[int] = None) -> List[int]`
-    - Scans linearly through page address range. If `num_references` (or generator default) is specified, cycles the range to meet the requested trace length.
-  - `generate_loop(sequence: Sequence[int], iterations: Optional[int] = None, num_references: Optional[int] = None) -> List[int]`
-    - Repeats a page sequence for `iterations` passes, or until `num_references` is fulfilled.
-  - `generate_random(page_range: Union[int, Tuple[int, int], range, Sequence[int]], num_references: Optional[int] = None) -> List[int]`
-    - Generates uniformly distributed random page requests across the target page space.
-  - `generate_zipf_hot_cold(page_range: ..., hot_page_ratio: float = 0.2, hot_request_ratio: float = 0.8, num_references: Optional[int] = None, zipf_alpha: Optional[float] = None) -> List[int]`
-    - Models 80/20 temporal locality: 80% of page references access the top 20% "hot" pages, while the remaining 20% access the other 80% "cold" pages. Supports optional Zipf exponent skew.
+2. **Process & Page Table (`src.process`)**:
+   - `PageTableEntry`: Holds `valid`, `dirty`, `frame_number`, and `referenced` bits with dual attribute/dictionary-style indexing.
+   - `PageTable(dict)`: Per-process hash map mapping virtual pages to `PageTableEntry`.
+   - `Process`: Represents an OS process with unique `process_id` and private `PageTable`.
 
-#### 2. Process & Page Table (`src.process`)
-
-- **Class**: `PageTableEntry`
-  - Attributes: `valid: bool`, `dirty: bool`, `frame_number: Optional[int]`, `referenced: bool`.
-  - Supports dual attribute access (`entry.valid`) and dictionary access (`entry['valid']`).
-- **Class**: `PageTable(dict)`
-  - Specialized hash map inheriting from `dict` mapping `page_number: int -> PageTableEntry`.
-  - Methods: `map_page()`, `invalidate()`, `is_valid()`, `is_dirty()`, `set_valid()`, `set_dirty()`.
-- **Class**: `Process`
-  - Attributes: `process_id: int`, `name: str`, `page_table: PageTable`.
-  - Methods: `get_page_entry()`, `is_page_valid()`, `is_page_dirty()`, `map_page()`, `unmap_page()`.
-
-#### 3. Memory Manager (`src.memory`)
-
-- **Class**: `Frame`
-  - Attributes: `frame_id: int`, `process_id: Optional[int]`, `page_number: Optional[int]`, `is_occupied: bool`, `reference_bit: bool`, `dirty_bit: bool`, `last_referenced_time: float`.
-  - Properties: `is_free: bool`, `frame_number: int`.
-- **Class**: `MemoryManager(frame_count: int)`
-  - Attributes: `frame_count: int`, `frames: List[Frame]`, `free_frames: Set[int]`, `occupied_frames: Set[int]`.
-  - Methods:
-    - `allocate_frame(process_id: int, page_number: int, frame_id: Optional[int] = None) -> Optional[int]`
-    - `free_frame(frame_id: int) -> Optional[Frame]`
-    - `is_frame_free(frame_id: int) -> bool`
-    - `is_frame_occupied(frame_id: int) -> bool`
-    - `get_free_frames() -> List[int]`
-    - `get_occupied_frames() -> List[int]`
-    - `is_full() -> bool`
-    - `reset() -> None`
+3. **Memory Manager (`src.memory`)**:
+   - `Frame`: Physical frame representation tracking `frame_id`, `process_id`, `page_number`, `is_occupied`, `last_referenced_time`, `reference_bit`, and `dirty_bit`.
+   - `MemoryManager(frame_count)`: Manages fixed physical frames, tracking `free_frames` and `occupied_frames`.
 
 ---
 
-### Running Tests & Demo
+## Stage 2: Memory Access Handler & Simulation Engine
 
-```bash
-# Run all unit tests
+1. **Simulation Clock (`SimulationClock`)**:
+   - Global integer timestamp counter incremented by 1 on every memory access.
+   - Critical for deterministic recency comparisons in LRU and Hybrid policies.
+
+2. **Metrics Tracker (`PerformanceMetrics`)**:
+   - Tracks `total_accesses`, `page_hits`, `page_faults`, and `dirty_write_backs`.
+   - Provides computed `hit_ratio` and `fault_ratio` metrics.
+
+3. **Simulation Engine (`SimulationEngine`)**:
+   - Core discrete-event memory access pipeline:
+     ```python
+     engine = SimulationEngine(memory_manager, processes, metrics=None, clock=None)
+     result = engine.execute_access(process, page_number, is_write=False)
+     ```
+   - **Access Pipeline**:
+     - Advances `SimulationClock` and increments `total_accesses`.
+     - **On Page HIT**:
+       - Updates frame's `last_referenced_time` to the current `SimulationClock`.
+       - If `is_write=True`, sets page table entry and frame dirty bit to `True`.
+       - Increments `page_hits`.
+     - **On Page FAULT**:
+       - Increments `page_faults`.
+       - If memory is **not full**: allocates a free frame, loads the page, maps it in the page table.
+       - If memory is **full**: triggers `_select_victim()`.
+   - **Victim Selection Stub (`_select_victim()`)**:
+     - Dummy placeholder selecting the first occupied frame.
+     - Checks if the evicted page was dirty; if so, increments `dirty_write_backs`.
+     - Unmaps the evicted page from its owning process's `PageTable`.
+     - Replaces frame contents with the new page.
+
+---
+
+## Running Tests & Demo
+
+```powershell
+# Run the complete test suite (all 29 tests)
 python -m unittest discover -s tests -p "test_*.py" -v
 
-# Run the interactive demonstration script
+# Run the interactive demo
 python demo.py
 ```

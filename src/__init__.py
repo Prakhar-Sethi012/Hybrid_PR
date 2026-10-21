@@ -1,6 +1,7 @@
 """
 Hybrid Page Replacement Simulator - Core Package.
 Stage 1: Workload Generation and Base Memory Data Structures.
+Stage 2: Memory Access Handler and Simulation Engine.
 """
 
 from .workload import (
@@ -12,6 +13,7 @@ from .workload import (
 )
 from .process import Process, PageTable, PageTableEntry
 from .memory import MemoryManager, Frame
+from .engine import SimulationClock, PerformanceMetrics, SimulationEngine, AccessResult
 
 __all__ = [
     "WorkloadGenerator",
@@ -24,4 +26,8 @@ __all__ = [
     "PageTableEntry",
     "MemoryManager",
     "Frame",
+    "SimulationClock",
+    "PerformanceMetrics",
+    "SimulationEngine",
+    "AccessResult",
 ]

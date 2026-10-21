@@ -1,7 +1,10 @@
 """
-Demo Script for Stage 1 of the Discrete-Event OS Simulator.
-Demonstrates Workload Generator patterns, Process PageTable operations,
-and MemoryManager frame tracking.
+Demo Script for Stage 1 & Stage 2 of the Discrete-Event OS Simulator.
+Demonstrates:
+- Workload Generator patterns (Stage 1)
+- Process & PageTable structures (Stage 1)
+- MemoryManager frame tracking (Stage 1)
+- SimulationClock, PerformanceMetrics, and SimulationEngine memory access handler (Stage 2)
 """
 
 from src.workload import (
@@ -13,6 +16,7 @@ from src.workload import (
 )
 from src.process import Process, PageTableEntry
 from src.memory import MemoryManager
+from src.engine import SimulationClock, PerformanceMetrics, SimulationEngine
 
 
 def print_section(title: str):
@@ -22,7 +26,7 @@ def print_section(title: str):
 
 
 def demo_workload_generator():
-    print_section("1. WORKLOAD GENERATOR PATTERNS")
+    print_section("1. WORKLOAD GENERATOR PATTERNS (STAGE 1)")
     gen = WorkloadGenerator(number_of_references=12, seed=42)
 
     # 1. Sequential Scan (single pass)
@@ -50,7 +54,7 @@ def demo_workload_generator():
 
 
 def demo_process_and_pagetable():
-    print_section("2. PROCESS & PAGE TABLE DATA STRUCTURES")
+    print_section("2. PROCESS & PAGE TABLE DATA STRUCTURES (STAGE 1)")
     proc = Process(process_id=1, name="SimulationWorker-1")
     print(f"Created: {proc}")
 
@@ -70,7 +74,7 @@ def demo_process_and_pagetable():
 
 
 def demo_memory_manager():
-    print_section("3. MEMORY MANAGER FRAME TRACKING")
+    print_section("3. MEMORY MANAGER FRAME TRACKING (STAGE 1)")
     frame_count = 4
     mem = MemoryManager(frame_count=frame_count)
     print(f"Initialized MemoryManager with {frame_count} physical frames.")
@@ -89,17 +93,58 @@ def demo_memory_manager():
     print(f"Allocated Frame {fid} to Process 2, Page 40")
     print(f"State: Free={mem.get_free_frames()}, Occupied={mem.get_occupied_frames()}, Full={mem.is_full()}")
 
-    # Attempt allocation when full
-    overflow = mem.allocate_frame(process_id=1, page_number=99)
-    print(f"\nAttempted allocation when full: result={overflow} (No replacement implemented yet)")
-
     # Free frame 1
     mem.free_frame(1)
     print(f"Freed Frame 1 -> Free={mem.get_free_frames()}, Occupied={mem.get_occupied_frames()}, Full={mem.is_full()}")
+
+
+def demo_simulation_engine():
+    print_section("4. SIMULATION ENGINE & MEMORY ACCESS PIPELINE (STAGE 2)")
+    # Setup: 3 physical frames, 2 processes
+    mem = MemoryManager(frame_count=3)
+    p1 = Process(process_id=1, name="App-Client")
+    p2 = Process(process_id=2, name="DB-Backend")
+    engine = SimulationEngine(memory_manager=mem, processes=[p1, p2])
+
+    print("Engine initialized with 3 physical frames and 2 processes.\n")
+
+    # Sequence of accesses: (PID, Page, is_write)
+    access_plan = [
+        (1, 10, False),  # Access 1: P1 reads page 10  -> FAULT (allocates Frame 0)
+        (1, 10, True),   # Access 2: P1 writes page 10 -> HIT (sets dirty=True on Frame 0)
+        (2, 20, False),  # Access 3: P2 reads page 20  -> FAULT (allocates Frame 1)
+        (1, 30, False),  # Access 4: P1 reads page 30  -> FAULT (allocates Frame 2; memory now FULL)
+        (2, 20, True),   # Access 5: P2 writes page 20 -> HIT (sets dirty=True on Frame 1)
+        (1, 40, False),  # Access 6: P1 reads page 40  -> FAULT! Memory full -> Evicts Frame 0 (P1 Page 10, DIRTY!) -> Dirty Write-Back!
+        (2, 50, False),  # Access 7: P2 reads page 50  -> FAULT! Memory full -> Evicts Frame 1 (P2 Page 20, DIRTY!) -> Dirty Write-Back!
+        (1, 30, False),  # Access 8: P1 reads page 30  -> HIT on Frame 2!
+    ]
+
+    print(f"{'Access #':<9} | {'PID':<4} | {'Page':<5} | {'Op':<5} | {'Outcome':<7} | {'Frame':<6} | {'Evicted':<12} | {'Write-Back'}")
+    print("-" * 75)
+
+    for pid, page, is_write in access_plan:
+        res = engine.execute_access(process=pid, page_number=page, is_write=is_write)
+        outcome = "HIT" if res.is_hit else "FAULT"
+        op = "WRITE" if is_write else "READ"
+        evict_str = f"Page {res.evicted_page}" if res.evicted_page is not None else "-"
+        wb_str = "YES (DIRTY)" if res.was_dirty_write_back else "No"
+        print(f"Clock={res.timestamp:<3} | P{pid:<3} | {page:<5} | {op:<5} | {outcome:<7} | F{res.frame_id:<5} | {evict_str:<12} | {wb_str}")
+
+    print("\n--- Final Metrics Summary ---")
+    m = engine.metrics
+    print(f"Total Accesses     : {m.total_accesses}")
+    print(f"Page Hits          : {m.page_hits}")
+    print(f"Page Faults        : {m.page_faults}")
+    print(f"Dirty Write-Backs  : {m.dirty_write_backs}")
+    print(f"Hit Rate           : {m.hit_ratio:.2%}")
+    print(f"Fault Rate         : {m.fault_ratio:.2%}")
+    print(f"Simulation Clock   : {engine.clock.current_time()}")
 
 
 if __name__ == "__main__":
     demo_workload_generator()
     demo_process_and_pagetable()
     demo_memory_manager()
-    print_section("STAGE 1 DEMONSTRATION COMPLETE")
+    demo_simulation_engine()
+    print_section("STAGE 1 & 2 DEMONSTRATION COMPLETE")
