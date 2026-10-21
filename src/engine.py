@@ -157,6 +157,62 @@ class AdaptiveParameterController:
         )
 
 
+# Standard Mock Hardware Latency Constants (in nanoseconds)
+RAM_ACCESS_TIME_NS: float = 100.0          # 100 ns
+DISK_READ_TIME_NS: float = 10_000_000.0    # 10 ms
+DISK_WRITE_TIME_NS: float = 10_000_000.0   # 10 ms
+
+
+class PageReplacementPolicy:
+    """Standard Page Replacement Policy Identifier Constants."""
+    FIFO = "FIFO"
+    LRU = "LRU"
+    LFU = "LFU"
+    ADAPTIVE_HYBRID = "AdaptiveHybrid"
+    HYBRID = "AdaptiveHybrid"
+
+
+class BasePageReplacementPolicy:
+    """Abstract base class / strategy interface for page replacement policies."""
+    name: str = "Base"
+
+    def select_victim(self, engine: "SimulationEngine") -> int:
+        """Selects and returns physical frame_id to evict."""
+        raise NotImplementedError("Replacement policies must implement select_victim(engine).")
+
+
+class FIFOPolicy(BasePageReplacementPolicy):
+    """First-In, First-Out (FIFO) replacement policy."""
+    name: str = PageReplacementPolicy.FIFO
+
+    def select_victim(self, engine: "SimulationEngine") -> int:
+        return engine._select_victim_fifo()
+
+
+class LRUPolicy(BasePageReplacementPolicy):
+    """Least Recently Used (LRU) replacement policy."""
+    name: str = PageReplacementPolicy.LRU
+
+    def select_victim(self, engine: "SimulationEngine") -> int:
+        return engine._select_victim_lru()
+
+
+class LFUPolicy(BasePageReplacementPolicy):
+    """Least Frequently Used (LFU) replacement policy."""
+    name: str = PageReplacementPolicy.LFU
+
+    def select_victim(self, engine: "SimulationEngine") -> int:
+        return engine._select_victim_lfu()
+
+
+class AdaptiveHybridPolicy(BasePageReplacementPolicy):
+    """Adaptive Hybrid Page Replacement policy with dirty write-back cost penalty."""
+    name: str = PageReplacementPolicy.ADAPTIVE_HYBRID
+
+    def select_victim(self, engine: "SimulationEngine") -> int:
+        return engine._select_victim_hybrid()
+
+
 @dataclass
 class PerformanceMetrics:
     """
@@ -186,6 +242,30 @@ class PerformanceMetrics:
         """Calculates fault ratio (page_faults / total_accesses)."""
         return self.page_faults / self.total_accesses if self.total_accesses > 0 else 0.0
 
+    def calculate_eat(
+        self,
+        ram_access_ns: float = RAM_ACCESS_TIME_NS,
+        disk_read_ns: float = DISK_READ_TIME_NS,
+        disk_write_ns: float = DISK_WRITE_TIME_NS,
+    ) -> float:
+        """
+        Calculates the Effective Access Time (EAT) in nanoseconds.
+        Formula: EAT = (Hit Ratio * RAM Access) + (Fault Ratio * Disk Read) + ((Dirty Write-backs / Total Accesses) * Disk Write)
+        """
+        if self.total_accesses == 0:
+            return 0.0
+        dirty_ratio = self.dirty_write_backs / self.total_accesses
+        return (
+            (self.hit_ratio * ram_access_ns)
+            + (self.fault_ratio * disk_read_ns)
+            + (dirty_ratio * disk_write_ns)
+        )
+
+    @property
+    def eat(self) -> float:
+        """Effective Access Time (EAT) in nanoseconds using standard mock hardware latencies."""
+        return self.calculate_eat()
+
     def reset(self) -> None:
         """Resets all metrics counters to zero."""
         self.total_accesses = 0
@@ -204,6 +284,7 @@ class PerformanceMetrics:
             "thrashing_suspensions": self.thrashing_suspensions,
             "hit_ratio": self.hit_ratio,
             "fault_ratio": self.fault_ratio,
+            "eat": self.eat,
         }
 
     def __repr__(self) -> str:
@@ -211,7 +292,7 @@ class PerformanceMetrics:
             f"PerformanceMetrics(accesses={self.total_accesses}, hits={self.page_hits}, "
             f"faults={self.page_faults}, write_backs={self.dirty_write_backs}, "
             f"suspensions={self.thrashing_suspensions}, "
-            f"hit_rate={self.hit_ratio:.2%})"
+            f"hit_rate={self.hit_ratio:.2%}, eat={self.eat:.1f}ns)"
         )
 
 
@@ -449,6 +530,7 @@ class SimulationEngine:
         delta: float = 2.0,
         upper_fault_threshold: float = 0.20,
         suspension_duration: int = 2,
+        policy: Union[str, BasePageReplacementPolicy, Any] = PageReplacementPolicy.ADAPTIVE_HYBRID,
     ):
         """
         Initialize SimulationEngine.
@@ -466,7 +548,9 @@ class SimulationEngine:
             delta: Dirty page penalty for eviction cost C(p) (default 2.0).
             upper_fault_threshold: Page fault rate threshold triggering thrashing suspension (default 0.20).
             suspension_duration: Number of windows a thrashing process remains suspended (default 2).
+            policy: Page replacement policy: "AdaptiveHybrid", "FIFO", "LRU", "LFU", or policy object.
         """
+        self.policy: Union[str, BasePageReplacementPolicy, Any] = policy
         self.memory_manager: MemoryManager = memory_manager
         self.processes: Dict[int, Process] = {}
         if processes:
@@ -548,17 +632,14 @@ class SimulationEngine:
 
     def _select_victim(self) -> int:
         """
-        Adaptive Hybrid Page Replacement victim selection.
+        Selects a victim frame for eviction using the configured page replacement policy.
 
-        When memory is full:
-        1. Iterates over all occupied frames.
-        2. Calculates each candidate's decayed hybrid score up to current_time:
-           S(p) = S_old * (1/2)^(lambda * Delta t), where Delta t = current_time - last_referenced_time.
-        3. Calculates Total Cost:
-           C(p) = S(p) + (delta if dirty else 0).
-        4. Selects the frame with the lowest C(p).
-        5. In the event of a tie: chooses the frame with the oldest last_referenced_time
-           (smallest last_referenced_time timestamp). If still tied, lowest frame_id.
+        Supports:
+        - "AdaptiveHybrid" (or "hybrid"): Cost-based C(p) victim selection with dirty penalty.
+        - "FIFO": First-In, First-Out eviction based on initial page load_time.
+        - "LRU": Least Recently Used eviction based on last_referenced_time.
+        - "LFU": Least Frequently Used eviction based on access_count frequency.
+        - Custom policy objects or callables implementing select_victim(engine) or __call__(engine).
 
         Returns:
             int: The physical frame ID chosen for eviction.
@@ -566,6 +647,80 @@ class SimulationEngine:
         if not self.memory_manager.occupied_frames:
             raise RuntimeError("Cannot select victim: no memory frames are currently occupied.")
 
+        # Check if policy provides a custom select_victim method
+        if hasattr(self.policy, "select_victim") and callable(self.policy.select_victim):
+            return int(self.policy.select_victim(self))
+        if callable(self.policy) and not isinstance(self.policy, type):
+            return int(self.policy(self))
+
+        policy_key = str(self.policy).strip().upper().replace("-", "").replace("_", "")
+        if "FIFO" in policy_key:
+            return self._select_victim_fifo()
+        elif "LFU" in policy_key:
+            return self._select_victim_lfu()
+        elif "LRU" in policy_key:
+            return self._select_victim_lru()
+        elif "HYBRID" in policy_key or "ADAPTIVE" in policy_key:
+            return self._select_victim_hybrid()
+        else:
+            raise ValueError(f"Unknown page replacement policy: '{self.policy}'")
+
+    def _select_victim_fifo(self) -> int:
+        """
+        First-In, First-Out (FIFO) Page Replacement.
+        Evicts the frame holding the page that arrived in physical memory earliest (smallest load_time).
+        Deterministic tie-breaker: lowest frame_id.
+        """
+        if not self.memory_manager.occupied_frames:
+            raise RuntimeError("Cannot select victim: no memory frames are currently occupied.")
+        candidates = []
+        for frame_id in self.memory_manager.occupied_frames:
+            frame = self.memory_manager.get_frame(frame_id)
+            candidates.append((frame.load_time, frame.frame_id))
+        best_candidate = min(candidates, key=lambda c: (c[0], c[1]))
+        return best_candidate[1]
+
+    def _select_victim_lru(self) -> int:
+        """
+        Least Recently Used (LRU) Page Replacement.
+        Evicts the frame referenced least recently (smallest last_referenced_time timestamp).
+        Deterministic tie-breaker: lowest frame_id.
+        """
+        if not self.memory_manager.occupied_frames:
+            raise RuntimeError("Cannot select victim: no memory frames are currently occupied.")
+        candidates = []
+        for frame_id in self.memory_manager.occupied_frames:
+            frame = self.memory_manager.get_frame(frame_id)
+            candidates.append((frame.last_referenced_time, frame.frame_id))
+        best_candidate = min(candidates, key=lambda c: (c[0], c[1]))
+        return best_candidate[1]
+
+    def _select_victim_lfu(self) -> int:
+        """
+        Least Frequently Used (LFU) Page Replacement.
+        Evicts the frame with the lowest access count / reference frequency.
+        Tie-breakers: oldest last_referenced_time (LRU tie-breaker), then lowest frame_id.
+        """
+        if not self.memory_manager.occupied_frames:
+            raise RuntimeError("Cannot select victim: no memory frames are currently occupied.")
+        candidates = []
+        for frame_id in self.memory_manager.occupied_frames:
+            frame = self.memory_manager.get_frame(frame_id)
+            candidates.append((frame.access_count, frame.last_referenced_time, frame.frame_id))
+        best_candidate = min(candidates, key=lambda c: (c[0], c[1], c[2]))
+        return best_candidate[2]
+
+    def _select_victim_hybrid(self) -> int:
+        """
+        Adaptive Hybrid Page Replacement victim selection.
+
+        Calculates each candidate's decayed hybrid score:
+        S(p) = S_old * (1/2)^(lambda * Delta t), and total cost:
+        C(p) = S(p) + (delta if dirty else 0).
+        Evicts frame with minimum C(p). Oldest last_referenced_time on tie.
+        """
+        if not self.memory_manager.occupied_frames:
+            raise RuntimeError("Cannot select victim: no memory frames are currently occupied.")
         current_time = self.clock.current_time()
         candidates = []
 
@@ -590,17 +745,12 @@ class SimulationEngine:
             dirty_penalty = self.delta if is_dirty else 0.0
             total_cost = s_decayed + dirty_penalty
 
-            # Candidate tuple:
-            # - round(total_cost, 9) ensures robust float equality comparison for ties
-            # - frame.last_referenced_time: smaller timestamp = older reference (LRU tie-breaker)
-            # - frame.frame_id: deterministic tie-breaker
             candidates.append((
                 round(total_cost, 9),
                 frame.last_referenced_time,
                 frame.frame_id,
             ))
 
-        # Select candidate with lowest C(p), oldest last_referenced_time on tie
         best_candidate = min(candidates, key=lambda c: (c[0], c[1], c[2]))
         return best_candidate[2]
 
@@ -679,6 +829,7 @@ class SimulationEngine:
 
             frame.hybrid_score = new_score
             frame.last_referenced_time = current_time
+            frame.access_count += 1
             frame.reference_bit = True
 
             entry.hybrid_score = new_score
@@ -714,12 +865,16 @@ class SimulationEngine:
                     page_number=page_number,
                     dirty=is_write,
                     hybrid_score=1.0,
+                    load_time=current_time,
+                    access_count=1,
                 )
                 if frame_id is None:
                     raise RuntimeError("Failed to allocate frame despite memory not being full.")
 
                 frame = self.memory_manager.get_frame(frame_id)
                 frame.last_referenced_time = current_time
+                frame.load_time = current_time
+                frame.access_count = 1
                 frame.reference_bit = True
                 frame.hybrid_score = 1.0
 
@@ -746,7 +901,7 @@ class SimulationEngine:
                 )
 
             else:
-                # Case B: Memory full -> Select victim using C(p)
+                # Case B: Memory full -> Select victim using configured policy
                 victim_frame_id = self._select_victim()
                 victim_frame = self.memory_manager.get_frame(victim_frame_id)
 
@@ -777,9 +932,13 @@ class SimulationEngine:
                     frame_id=victim_frame_id,
                     dirty=is_write,
                     hybrid_score=1.0,
+                    load_time=current_time,
+                    access_count=1,
                 )
 
                 victim_frame.last_referenced_time = current_time
+                victim_frame.load_time = current_time
+                victim_frame.access_count = 1
                 victim_frame.reference_bit = True
                 victim_frame.dirty_bit = is_write
                 victim_frame.hybrid_score = 1.0

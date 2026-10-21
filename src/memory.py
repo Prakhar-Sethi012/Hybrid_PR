@@ -33,6 +33,8 @@ class Frame:
         self.reference_bit: bool = False
         self.dirty_bit: bool = False
         self.hybrid_score: float = 0.0
+        self.load_time: float = 0.0
+        self.access_count: int = 0
 
     @property
     def frame_number(self) -> int:
@@ -50,6 +52,8 @@ class Frame:
         page_number: int,
         dirty: bool = False,
         hybrid_score: float = 1.0,
+        load_time: float = 0.0,
+        access_count: int = 1,
     ) -> None:
         """Marks the frame as occupied and binds it to a process and page."""
         self.process_id = int(process_id)
@@ -58,6 +62,8 @@ class Frame:
         self.reference_bit = True
         self.dirty_bit = bool(dirty)
         self.hybrid_score = float(hybrid_score)
+        self.load_time = float(load_time)
+        self.access_count = int(access_count)
 
     def clear(self) -> None:
         """Frees the frame and clears associated metadata."""
@@ -68,6 +74,8 @@ class Frame:
         self.reference_bit = False
         self.dirty_bit = False
         self.hybrid_score = 0.0
+        self.load_time = 0.0
+        self.access_count = 0
 
     def __repr__(self) -> str:
         if self.is_occupied:
@@ -148,6 +156,8 @@ class MemoryManager:
         frame_id: Optional[int] = None,
         dirty: bool = False,
         hybrid_score: float = 1.0,
+        load_time: float = 0.0,
+        access_count: int = 1,
     ) -> Optional[int]:
         """
         Allocates a physical frame to the given process_id and page_number.
@@ -178,6 +188,8 @@ class MemoryManager:
             page_number=page_number,
             dirty=dirty,
             hybrid_score=hybrid_score,
+            load_time=load_time,
+            access_count=access_count,
         )
         return target_id
 

@@ -125,10 +125,56 @@ Hybrid_PR/
 
 ---
 
-## Running Tests & Demo
+## Stage 5: Evaluation Module & Baseline Policies (`evaluate.py`)
+
+### 1. Baseline Replacement Policies
+Pluggable page replacement algorithms implemented for comparative evaluation against `AdaptiveHybrid`:
+- **FIFO (First-In, First-Out)**: Evicts the frame holding the page that arrived earliest in physical memory (`load_time`).
+- **LRU (Least Recently Used)**: Evicts the frame referenced least recently (`last_referenced_time`).
+- **LFU (Least Frequently Used)**: Evicts the frame with lowest reference count (`access_count`), with LRU tie-breaking.
+- **AdaptiveHybrid**: Evicts the frame with minimum total cost $C(p) = S(p) + (\delta \text{ if dirty else } 0)$.
+
+### 2. Effective Access Time (EAT) Math
+Implemented in `PerformanceMetrics.calculate_eat()` using mock hardware latencies:
+- **RAM Access Time**: 100 ns
+- **Disk Read (Page Fault)**: 10,000,000 ns (10 ms)
+- **Disk Write (Dirty Write-back)**: 10,000,000 ns (10 ms)
+
+$$\text{EAT} = (\text{Hit Ratio} \times \text{RAM Access}) + (\text{Fault Ratio} \times \text{Disk Read}) + \left(\frac{\text{Dirty Write-backs}}{\text{Total Accesses}} \times \text{Disk Write}\right)$$
+
+### 3. Automated Benchmark Suite (`run_benchmark()`)
+Executes an automated $4 \times 4$ testing matrix across:
+- **Workloads**: Sequential, Loop, Random, and Zipf (Hot/Cold) (all with a 20% write probability).
+- **Algorithms**: FIFO, LRU, LFU, and AdaptiveHybrid.
+- **Reproducibility Guarantee**: Identical pseudo-random seed is used so all policies run against 100% identical memory reference traces.
+
+---
+
+## Stage 5: Full-Stack Frontend Integration (FastAPI + React Vite)
+
+### 1. The FastAPI Backend (`app.py`)
+Exposes the simulator and benchmark suite over REST:
+- `POST /api/simulate`: Accepts JSON payload (`algorithm`, `workload_type`, `frame_count`, `references`, `write_probability`, `seed`). Instantiates `SimulationEngine`, runs trace, and returns `PerformanceMetrics` and frame-by-frame `MemoryManager` state.
+- `GET /api/benchmark`: Triggers `run_benchmark()` logic from `evaluate.py` and returns comparative JSON for frontend graphing.
+- `GET /api/health`: Health check endpoint.
+
+### 2. The React Frontend (`frontend/`)
+A single-page application built with **Vite**, **React**, and **Tailwind CSS v3** featuring a dark-mode technical aesthetic:
+- **Configuration Sidebar**: Form inputs for Frame Count, References, Workload Pattern, Write Probability, Algorithm selection, and Scenario Presets.
+- **Real-Time RAM Visualizer**: Dynamic grid representing physical memory frames with color-coding:
+  - **Clean Page** (Green/Emerald): Eviction incurs 0 disk write penalty.
+  - **Dirty Page** (Red/Orange): Eviction incurs $\delta$ penalty risk and 10ms disk write-back.
+  - **Empty Frame** (Gray / Dashed): Unallocated frame.
+  - **Detailed State Inspector**: Click any frame to inspect resident page, hybrid score $S(p)$, LFU count, and timestamps.
+- **Live Metrics Ribbon**: Cards displaying Hit Ratio, Page Faults, Dirty Writes, Thrashing Suspensions, and EAT (ns/ms).
+- **Benchmark Charts (Recharts)**: Interactive bar chart comparing Effective Access Time (EAT), Hit Ratio, and Dirty Writes of the 4 algorithms across the 4 workloads.
+
+---
+
+## Running Tests, Demo, Benchmark & Full-Stack App
 
 ```powershell
-# Run the complete test suite (all 53 tests passing)
+# Run the complete test suite (all 74 tests passing)
 python -m unittest discover -s tests -p "test_*.py" -v
 
 # Or run with pytest
@@ -136,4 +182,15 @@ python -m pytest -v
 
 # Run the interactive demo covering Stages 1-4
 python demo.py
+
+# Run the automated benchmark evaluation suite (outputs clean ASCII table)
+python evaluate.py
+
+# Start the FastAPI backend server (Port 8000)
+python -m uvicorn app:app --host 127.0.0.1 --port 8000
+
+# In a separate terminal, start the React frontend (Port 5173)
+cd frontend
+npm install
+npm run dev
 ```

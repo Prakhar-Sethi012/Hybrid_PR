@@ -13,6 +13,15 @@ from src.engine import (
     compute_decayed_score,
     ThrashingController,
     CpuScheduler,
+    PageReplacementPolicy,
+    BasePageReplacementPolicy,
+    FIFOPolicy,
+    LRUPolicy,
+    LFUPolicy,
+    AdaptiveHybridPolicy,
+    RAM_ACCESS_TIME_NS,
+    DISK_READ_TIME_NS,
+    DISK_WRITE_TIME_NS,
 )
 
 __all__ = [
@@ -24,4 +33,13 @@ __all__ = [
     "compute_decayed_score",
     "ThrashingController",
     "CpuScheduler",
+    "PageReplacementPolicy",
+    "BasePageReplacementPolicy",
+    "FIFOPolicy",
+    "LRUPolicy",
+    "LFUPolicy",
+    "AdaptiveHybridPolicy",
+    "RAM_ACCESS_TIME_NS",
+    "DISK_READ_TIME_NS",
+    "DISK_WRITE_TIME_NS",
 ]
