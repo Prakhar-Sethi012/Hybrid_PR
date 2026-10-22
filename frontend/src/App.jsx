@@ -1,23 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import ConfigurationSidebar from './components/ConfigurationSidebar';
-import MetricsRibbon from './components/MetricsRibbon';
-import RAMVisualizer from './components/RAMVisualizer';
-import TimelinePlayer from './components/TimelinePlayer';
-import StepExplanationPanel from './components/StepExplanationPanel';
-import ComparisonMode from './components/ComparisonMode';
-import BenchmarkCharts from './components/BenchmarkCharts';
-import {
-  Cpu,
-  Layers,
-  GitCompare,
-  BarChart3,
-  AlertCircle,
-  RefreshCw,
-  Sliders,
-  Keyboard,
-} from 'lucide-react';
+import Header from './components/Header';
+import ScenarioComposer from './components/ScenarioComposer';
+import PerformanceMetricsRibbon from './components/PerformanceMetricsRibbon';
+import HeroMemoryAccess from './components/HeroMemoryAccess';
+import PlaybackControls from './components/PlaybackControls';
+import DecisionNarrative from './components/DecisionNarrative';
+import PhysicalMemoryMap from './components/PhysicalMemoryMap';
+import AlgorithmComparisonView from './components/AlgorithmComparisonView';
+import BenchmarkAnalysisView from './components/BenchmarkAnalysisView';
+import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
+import { AlertCircle } from 'lucide-react';
 
 export default function App() {
+  const [theme, setTheme] = useState('dark'); // 'dark' | 'light'
   const [config, setConfig] = useState({
     algorithm: 'AdaptiveHybrid',
     workload_type: 'Zipf (Hot/Cold)',
@@ -27,26 +22,50 @@ export default function App() {
     seed: 42,
   });
 
+  const [activeView, setActiveView] = useState('STEPPER'); // 'STEPPER', 'COMPARE', 'BENCHMARK'
+  const [isApiHealthy, setIsApiHealthy] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Single Simulation State
   const [simulationData, setSimulationData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Active view: 'STEPPER' (Single Algorithm Stepper), 'COMPARE' (4-Way Comparison), 'BENCHMARK'
-  const [activeView, setActiveView] = useState('STEPPER');
-
-  // Stepper timeline playback state
+  // Stepper Timeline Playback State
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(200); // ms per step
   const playTimerRef = useRef(null);
 
-  // Comparison mode data & step
+  // Synchronized 4-Way Comparison State
   const [compareData, setCompareData] = useState(null);
   const [isCompareLoading, setIsCompareLoading] = useState(false);
   const [compareStepIndex, setCompareStepIndex] = useState(0);
   const [isComparePlaying, setIsComparePlaying] = useState(false);
   const [compareSpeed, setCompareSpeed] = useState(200);
   const compareTimerRef = useRef(null);
+
+  // Manage Theme Classes on HTML element
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    }
+  }, [theme]);
+
+  // Health probe
+  useEffect(() => {
+    fetch('/api/health')
+      .then((res) => {
+        if (res.ok) setIsApiHealthy(true);
+      })
+      .catch(() => setIsApiHealthy(false));
+  }, []);
 
   // Run single simulation
   const runSimulation = useCallback(
@@ -65,13 +84,13 @@ export default function App() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || `Server returned ${res.status}: ${res.statusText}`);
+          throw new Error(errData.detail || `Server error: ${res.status} ${res.statusText}`);
         }
 
         const data = await res.json();
         setSimulationData(data);
-        // Start playback at step 0 so user can step through reference-by-reference
         setCurrentStepIndex(0);
+        setIsApiHealthy(true);
       } catch (err) {
         setError(err.message || 'Failed to execute simulation');
       } finally {
@@ -105,8 +124,9 @@ export default function App() {
           const data = await res.json();
           setCompareData(data);
           setCompareStepIndex(0);
+          setIsApiHealthy(true);
         } else {
-          console.error('Comparison endpoint error:', res.statusText);
+          console.error('Comparison error:', res.statusText);
         }
       } catch (err) {
         console.error('Comparison fetch error:', err);
@@ -120,9 +140,9 @@ export default function App() {
   // Initial load
   useEffect(() => {
     runSimulation();
-  }, []);
+  }, [runSimulation]);
 
-  // Fetch comparison data when user switches to compare tab if not loaded
+  // Auto-fetch comparison data when switching to compare tab
   useEffect(() => {
     if (activeView === 'COMPARE' && !compareData && !isCompareLoading) {
       runCompare();
@@ -172,7 +192,7 @@ export default function App() {
     };
   }, [isComparePlaying, compareSpeed, compareData]);
 
-  // Keyboard Shortcuts (Space for Play/Pause, ArrowLeft/Right for Stepping)
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -204,6 +224,31 @@ export default function App() {
           setIsComparePlaying(false);
           setCompareStepIndex((p) => Math.min(hybridTrace.length - 1, p + 1));
         }
+      } else if (e.code === 'Home') {
+        e.preventDefault();
+        if (activeView === 'STEPPER') {
+          setIsPlaying(false);
+          setCurrentStepIndex(0);
+        } else if (activeView === 'COMPARE') {
+          setIsComparePlaying(false);
+          setCompareStepIndex(0);
+        }
+      } else if (e.code === 'End') {
+        e.preventDefault();
+        if (activeView === 'STEPPER') {
+          const total = simulationData?.execution_trace?.length || 0;
+          setIsPlaying(false);
+          setCurrentStepIndex(Math.max(0, total - 1));
+        } else if (activeView === 'COMPARE') {
+          const hybridTrace = compareData?.comparison?.AdaptiveHybrid?.execution_trace || [];
+          setIsComparePlaying(false);
+          setCompareStepIndex(Math.max(0, hybridTrace.length - 1));
+        }
+      } else if (e.key === '?') {
+        setShowShortcuts((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        setShowShortcuts(false);
+        setShowSettings(false);
       }
     };
 
@@ -211,14 +256,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeView, simulationData, compareData]);
 
-  // Extract current step data for Single Playback
+  // Extract current trace tick data for Single Playback
   const traceList = simulationData?.execution_trace || [];
   const currentStep =
     currentStepIndex >= 0 && currentStepIndex < traceList.length
       ? traceList[currentStepIndex]
       : null;
 
-  // Resolve memoryManager snapshot to display in RAMVisualizer
+  // Resolve memoryManager snapshot to display in PhysicalMemoryMap
   const displayedMemoryManager =
     currentStep && currentStep.memory_state
       ? {
@@ -229,224 +274,170 @@ export default function App() {
         }
       : simulationData?.memory_manager;
 
+  const handleApplyPreset = (p) => {
+    const updated = {
+      ...config,
+      algorithm: p.algo,
+      workload_type: p.workload,
+      frame_count: p.frames,
+      references: p.refs,
+      write_probability: p.writeProb,
+    };
+    setConfig(updated);
+    runSimulation(updated);
+    if (activeView === 'COMPARE') {
+      runCompare(updated);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-zinc-700 selection:text-white">
-      {/* Top Navbar */}
-      <header className="border-b border-zinc-800 bg-[#09090b]/95 backdrop-blur sticky top-0 z-50 px-4 lg:px-8 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          {/* Logo & Subtitle */}
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100">
-              <Cpu className="w-5 h-5" />
+    <div className="min-h-screen bg-black text-white flex flex-col font-sans transition-colors duration-150">
+      {/* Top Observatory Command Header */}
+      <Header
+        activeView={activeView}
+        onViewChange={setActiveView}
+        isApiHealthy={isApiHealthy}
+        onToggleShortcuts={() => setShowShortcuts(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onRunSimulation={() => {
+          runSimulation(config);
+          if (activeView === 'COMPARE') runCompare(config);
+        }}
+        isLoading={isLoading || isCompareLoading}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        config={config}
+        onApplyPreset={handleApplyPreset}
+      />
+
+      {/* Main Workspace Canvas (No Cluttering Sidebar!) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col">
+        {/* Error Notification */}
+        {error && (
+          <div className="mb-4 p-4 rounded-xl bg-rose-950/60 border border-rose-500 text-rose-200 text-xs flex items-center justify-between font-sans shadow-glow-ruby animate-fault-pulse">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+              <span>Simulation Error: {error}</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-semibold tracking-tight text-zinc-100 font-mono">
-                  AdaptiveHybrid Simulator
-                </h1>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                  v2.4
-                </span>
+            <button
+              type="button"
+              onClick={() => runSimulation()}
+              className="btn-secondary px-3 py-1 rounded text-xs font-bold cursor-pointer"
+            >
+              Retry Simulation
+            </button>
+          </div>
+        )}
+
+        {/* VIEW 1: EXECUTION OBSERVATORY LAB */}
+        {activeView === 'STEPPER' && (
+          <div>
+            {/* Top HUD: Telemetry Metrics Ribbon */}
+            <PerformanceMetricsRibbon
+              metrics={simulationData?.metrics}
+              latencies={simulationData?.latencies}
+              isLoading={isLoading}
+            />
+
+            {/* Split Observatory Deck: 60% Execution Core | 40% Silicon Memory Die */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Left Column: Live Execution Core (7 cols) */}
+              <div className="lg:col-span-7 flex flex-col">
+                {/* Hero Access State */}
+                <HeroMemoryAccess
+                  currentStep={currentStep}
+                  algorithm={config.algorithm}
+                  totalSteps={traceList.length}
+                />
+
+                {/* Precision Timeline Transport Controls */}
+                <PlaybackControls
+                  currentStep={currentStepIndex}
+                  totalSteps={traceList.length}
+                  isPlaying={isPlaying}
+                  playbackSpeed={playbackSpeed}
+                  onPlayPause={() => setIsPlaying(!isPlaying)}
+                  onStepChange={(step) => {
+                    setIsPlaying(false);
+                    setCurrentStepIndex(step);
+                  }}
+                  onSpeedChange={(speed) => setPlaybackSpeed(speed)}
+                  trace={traceList}
+                />
+
+                {/* Algorithmic Reasoning Terminal */}
+                <DecisionNarrative
+                  currentStep={currentStep}
+                  algorithm={config.algorithm}
+                />
               </div>
-              <p className="text-[11px] text-zinc-500 font-mono">
-                Interactive Stepper &bull; Dirty Penalty Cost C(p) &bull; Synchronized Divergence
-              </p>
+
+              {/* Right Column: Physical RAM Matrix (5 cols) */}
+              <div className="lg:col-span-5 flex flex-col">
+                <PhysicalMemoryMap
+                  memoryManager={displayedMemoryManager}
+                  currentStepData={currentStep}
+                  algorithm={config.algorithm}
+                />
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Navigation Tabs & Status */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-zinc-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>FastAPI :8000</span>
-            </div>
+        {/* VIEW 2: 4-WAY DIVERGENCE OBSERVATORY */}
+        {activeView === 'COMPARE' && (
+          <AlgorithmComparisonView
+            compareData={compareData}
+            isLoading={isCompareLoading}
+            currentStep={compareStepIndex}
+            onStepChange={(step) => {
+              setIsComparePlaying(false);
+              setCompareStepIndex(step);
+            }}
+            isPlaying={isComparePlaying}
+            playbackSpeed={compareSpeed}
+            onPlayPause={() => setIsComparePlaying(!isComparePlaying)}
+            onSpeedChange={(speed) => setCompareSpeed(speed)}
+            onRefresh={() => runCompare()}
+          />
+        )}
 
-            <div className="flex items-center p-0.5 bg-zinc-900 rounded-lg border border-zinc-800 text-xs font-mono">
-              <button
-                type="button"
-                onClick={() => setActiveView('STEPPER')}
-                className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
-                  activeView === 'STEPPER'
-                    ? 'bg-zinc-200 text-zinc-950 font-medium'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Stepper</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('COMPARE');
-                  if (!compareData) runCompare();
-                }}
-                className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
-                  activeView === 'COMPARE'
-                    ? 'bg-zinc-200 text-zinc-950 font-medium'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <GitCompare className="w-3.5 h-3.5" />
-                <span>Compare 4 Algos</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveView('BENCHMARK')}
-                className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
-                  activeView === 'BENCHMARK'
-                    ? 'bg-zinc-200 text-zinc-950 font-medium'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>Benchmarks</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-6 flex flex-col lg:flex-row gap-5">
-        {/* Left: Configuration Sidebar */}
-        <ConfigurationSidebar
-          config={config}
-          onChange={setConfig}
-          onRunSimulation={() => {
-            runSimulation(config);
-            if (activeView === 'COMPARE') {
-              runCompare(config);
-            }
-          }}
-          isLoading={isLoading || isCompareLoading}
-        />
-
-        {/* Right: Content Viewport */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {/* Error Banner */}
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-950/30 border border-rose-800/60 text-rose-300 text-xs flex items-center justify-between font-mono">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-                <span>Simulation Error: {error}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => runSimulation()}
-                className="underline hover:text-white font-medium cursor-pointer"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
-          {/* VIEW 1: STEPPER (Interactive Step-by-Step Playback) */}
-          {activeView === 'STEPPER' && (
-            <div className="space-y-0">
-              {/* Overall Metrics Summary */}
-              <MetricsRibbon
-                metrics={simulationData?.metrics}
-                latencies={simulationData?.latencies}
-                isLoading={isLoading}
-              />
-
-              {/* Timeline Player Scrubber Bar */}
-              <TimelinePlayer
-                currentStep={currentStepIndex}
-                totalSteps={traceList.length}
-                isPlaying={isPlaying}
-                playbackSpeed={playbackSpeed}
-                onPlayPause={() => setIsPlaying(!isPlaying)}
-                onStepChange={(step) => {
-                  setIsPlaying(false);
-                  setCurrentStepIndex(step);
-                }}
-                onSpeedChange={(speed) => setPlaybackSpeed(speed)}
-                trace={traceList}
-              />
-
-              {/* Active Step Explanation Panel with Math Log */}
-              <StepExplanationPanel
-                currentStep={currentStep}
-                algorithm={config.algorithm}
-              />
-
-              {/* Live Physical Memory Frames Visualizer */}
-              <RAMVisualizer
-                memoryManager={displayedMemoryManager}
-                currentStepData={currentStep}
-                algorithm={config.algorithm}
-              />
-
-              {/* Keyboard Shortcuts Hint */}
-              <div className="mt-2 text-center text-[11px] font-mono text-zinc-500 flex items-center justify-center gap-3">
-                <Keyboard className="w-3.5 h-3.5" />
-                <span>Keyboard Shortcuts: [Space] Play/Pause &bull; [&larr;] Step Back &bull; [&rarr;] Step Forward</span>
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 2: COMPARE (Synchronized 4-Algorithm Execution Mode) */}
-          {activeView === 'COMPARE' && (
-            <div>
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-zinc-100 font-mono tracking-tight">
-                    Synchronized 4-Algorithm Divergence Analysis
-                  </h2>
-                  <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                    Advances FIFO, LRU, LFU, and AdaptiveHybrid step-by-step on the identical memory trace
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => runCompare()}
-                  disabled={isCompareLoading}
-                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isCompareLoading ? 'animate-spin' : ''}`} />
-                  <span>Re-run Comparison</span>
-                </button>
-              </div>
-
-              <ComparisonMode
-                compareData={compareData}
-                isLoading={isCompareLoading}
-                currentStep={compareStepIndex}
-                onStepChange={(step) => {
-                  setIsComparePlaying(false);
-                  setCompareStepIndex(step);
-                }}
-                isPlaying={isComparePlaying}
-                playbackSpeed={compareSpeed}
-                onPlayPause={() => setIsComparePlaying(!isComparePlaying)}
-                onSpeedChange={(speed) => setCompareSpeed(speed)}
-                onRefresh={() => runCompare()}
-              />
-            </div>
-          )}
-
-          {/* VIEW 3: BENCHMARK CHARTS */}
-          {activeView === 'BENCHMARK' && (
-            <BenchmarkCharts apiBaseUrl="" />
-          )}
-        </div>
+        {/* VIEW 3: 4×4 BENCHMARK SUITE */}
+        {activeView === 'BENCHMARK' && (
+          <BenchmarkAnalysisView apiBaseUrl="" />
+        )}
       </main>
 
-      {/* Minimal Footer */}
-      <footer className="border-t border-zinc-800/80 bg-[#09090b] py-3.5 px-6 text-xs text-zinc-500 font-mono mt-auto">
+      {/* Footer */}
+      <footer className="border-t border-dark-border dark:border-dark-border light:border-light-border bg-dark-surface dark:bg-dark-surface light:bg-light-surface py-3 px-6 text-xs text-dark-inkMuted dark:text-dark-inkMuted light:text-light-inkMuted font-sans mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            Operating Systems Research Simulator &bull; AdaptiveHybrid Page Replacement
+            HybridMemoryLab &bull; Discrete-Event Systems Memory Simulator
           </span>
-          <span>
-            RAM = 100ns &bull; Fault Disk Read = 10ms &bull; Dirty Penalty &delta; = 10ms
+          <span className="font-mono text-[11px] text-blue-400">
+            Hardware: RAM 100ns &bull; Fault Read 10ms (10,000,000ns) &bull; Dirty Flush &delta; 10ms
           </span>
         </div>
       </footer>
+
+      {/* Floating Scenario Composer Modal */}
+      <ScenarioComposer
+        config={config}
+        onChange={setConfig}
+        onRunSimulation={() => {
+          runSimulation(config);
+          if (activeView === 'COMPARE') runCompare(config);
+        }}
+        isLoading={isLoading || isCompareLoading}
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      {/* Keyboard Shortcuts Dialog Modal */}
+      <KeyboardShortcutsModal
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+      />
     </div>
   );
 }
