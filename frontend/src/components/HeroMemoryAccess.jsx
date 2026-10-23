@@ -70,8 +70,8 @@ export default function HeroMemoryAccess({
             {isHit
               ? '100 ns (RAM Hit)'
               : isDirtyWriteBack
-              ? '20,000,100 ns (10ms Read + 10ms Write)'
-              : '10,000,100 ns (10ms Disk Read)'}
+              ? '20,000,000 ns (10ms Read + 10ms Write)'
+              : '10,000,000 ns (10ms Disk Read)'}
           </strong>
         </div>
       </div>
@@ -169,7 +169,17 @@ export default function HeroMemoryAccess({
             <HardDrive className="w-3.5 h-3.5 text-zinc-400" />
           </div>
 
-          {hasEviction ? (
+          {isHit ? (
+            <div className="my-2">
+              <div className="text-sm font-mono font-bold text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Resident in Frame #{currentStep.frame_id ?? 0}</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1 font-mono">
+                Page already cached in physical silicon. Zero allocation or eviction needed.
+              </p>
+            </div>
+          ) : hasEviction ? (
             <div className="my-1.5">
               <div className="flex items-center gap-2 text-xs font-mono font-bold mb-2">
                 <span className="px-2 py-1 rounded bg-[#180404] text-rose-300 border border-rose-800">

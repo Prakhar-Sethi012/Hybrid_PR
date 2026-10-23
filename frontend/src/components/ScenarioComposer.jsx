@@ -72,7 +72,7 @@ export default function ScenarioComposer({
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div className="bg-[#0A0A0A] border border-[#222222] rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-120">
+      <div className="bg-[#0A0A0A] border border-[#222222] rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl animate-modal-enter">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 mb-5 border-b border-[#222222]">
           <div className="flex items-center gap-2.5">
@@ -188,7 +188,7 @@ export default function ScenarioComposer({
               <input
                 type="range"
                 min="4"
-                max="32"
+                max="64"
                 step="1"
                 value={config.frame_count}
                 onChange={(e) => onChange({ ...config, frame_count: Number(e.target.value) })}
@@ -198,7 +198,7 @@ export default function ScenarioComposer({
               <div className="flex justify-between text-[10px] text-zinc-600 font-mono mt-1">
                 <span>4 min</span>
                 <span>16 avg</span>
-                <span>32 max</span>
+                <span>64 max</span>
               </div>
             </div>
 

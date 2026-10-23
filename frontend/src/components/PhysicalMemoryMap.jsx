@@ -186,7 +186,7 @@ export default function PhysicalMemoryMap({
 
               {/* Active Marker Indicator */}
               {isTargeted && (
-                <div className="absolute -top-2 right-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.2 rounded shadow uppercase">
+                <div className="absolute -top-2 right-2 bg-white text-black text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow uppercase">
                   ACTIVE
                 </div>
               )}

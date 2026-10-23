@@ -20,7 +20,7 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
       aria-modal="true"
       aria-labelledby="shortcuts-title"
     >
-      <div className="bg-[#0A0A0A] border border-[#222222] rounded-xl shadow-2xl w-full max-w-md p-5 text-white animate-in fade-in zoom-in-95 duration-120">
+      <div className="bg-[#0A0A0A] border border-[#222222] rounded-xl shadow-2xl w-full max-w-md p-5 text-white animate-modal-enter">
         <div className="flex items-center justify-between pb-3 border-b border-[#222222] mb-4">
           <div className="flex items-center gap-2">
             <Keyboard className="w-5 h-5 text-zinc-400" aria-hidden="true" />

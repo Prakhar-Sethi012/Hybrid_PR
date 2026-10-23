@@ -67,9 +67,13 @@ export default function App() {
       .catch(() => setIsApiHealthy(false));
   }, []);
 
+  const configRef = useRef(config);
+  configRef.current = config;
+
   // Run single simulation
   const runSimulation = useCallback(
-    async (customConfig = config) => {
+    async (customConfig) => {
+      const activeCfg = customConfig || configRef.current;
       setIsLoading(true);
       setIsPlaying(false);
       if (playTimerRef.current) clearInterval(playTimerRef.current);
@@ -79,7 +83,7 @@ export default function App() {
         const res = await fetch('/api/simulate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(customConfig),
+          body: JSON.stringify(activeCfg),
         });
 
         if (!res.ok) {
@@ -93,51 +97,60 @@ export default function App() {
         setIsApiHealthy(true);
       } catch (err) {
         setError(err.message || 'Failed to execute simulation');
+        if (err.name === 'TypeError' || err.message?.includes('fetch')) {
+          setIsApiHealthy(false);
+        }
       } finally {
         setIsLoading(false);
       }
     },
-    [config]
+    []
   );
 
   // Run comparison simulation across all 4 algorithms on identical workload
   const runCompare = useCallback(
-    async (customConfig = config) => {
+    async (customConfig) => {
+      const activeCfg = customConfig || configRef.current;
       setIsCompareLoading(true);
       setIsComparePlaying(false);
       if (compareTimerRef.current) clearInterval(compareTimerRef.current);
+      setError(null);
 
       try {
         const res = await fetch('/api/compare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            workload_type: customConfig.workload_type,
-            frame_count: customConfig.frame_count,
-            references: Math.min(customConfig.references, 500),
-            write_probability: customConfig.write_probability,
-            seed: customConfig.seed,
+            workload_type: activeCfg.workload_type,
+            frame_count: activeCfg.frame_count,
+            references: Math.min(activeCfg.references, 500),
+            write_probability: activeCfg.write_probability,
+            seed: activeCfg.seed,
           }),
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          setCompareData(data);
-          setCompareStepIndex(0);
-          setIsApiHealthy(true);
-        } else {
-          console.error('Comparison error:', res.statusText);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Comparison error: ${res.status} ${res.statusText}`);
         }
+
+        const data = await res.json();
+        setCompareData(data);
+        setCompareStepIndex(0);
+        setIsApiHealthy(true);
       } catch (err) {
-        console.error('Comparison fetch error:', err);
+        setError(err.message || 'Comparison fetch failed');
+        if (err.name === 'TypeError' || err.message?.includes('fetch')) {
+          setIsApiHealthy(false);
+        }
       } finally {
         setIsCompareLoading(false);
       }
     },
-    [config]
+    []
   );
 
-  // Initial load
+  // Initial load on mount only
   useEffect(() => {
     runSimulation();
   }, [runSimulation]);
@@ -267,7 +280,9 @@ export default function App() {
   const displayedMemoryManager =
     currentStep && currentStep.memory_state
       ? {
-          frame_count: config.frame_count,
+          frame_count:
+            simulationData?.memory_manager?.frame_count ||
+            currentStep.memory_state.length,
           occupied_count: currentStep.memory_state.filter((f) => f.is_occupied).length,
           free_count: currentStep.memory_state.filter((f) => !f.is_occupied).length,
           frames: currentStep.memory_state,
@@ -314,7 +329,7 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col">
         {/* Error Notification */}
         {error && (
-          <div className="mb-4 p-4 rounded-xl bg-rose-950/60 border border-rose-500 text-rose-200 text-xs flex items-center justify-between font-sans shadow-glow-ruby animate-fault-pulse">
+          <div className="mb-4 p-4 rounded-xl bg-rose-950/60 border border-rose-500 text-rose-200 text-xs flex items-center justify-between font-sans animate-fault-pulse">
             <div className="flex items-center gap-2.5">
               <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
               <span>Simulation Error: {error}</span>
@@ -409,12 +424,12 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-dark-border dark:border-dark-border light:border-light-border bg-dark-surface dark:bg-dark-surface light:bg-light-surface py-3 px-6 text-xs text-dark-inkMuted dark:text-dark-inkMuted light:text-light-inkMuted font-sans mt-auto">
+      <footer className="border-t border-[#222222] bg-[#0A0A0A] py-3 px-6 text-xs text-zinc-400 font-sans mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
             HybridMemoryLab &bull; Discrete-Event Systems Memory Simulator
           </span>
-          <span className="font-mono text-[11px] text-blue-400">
+          <span className="font-mono text-[11px] text-zinc-400">
             Hardware: RAM 100ns &bull; Fault Read 10ms (10,000,000ns) &bull; Dirty Flush &delta; 10ms
           </span>
         </div>

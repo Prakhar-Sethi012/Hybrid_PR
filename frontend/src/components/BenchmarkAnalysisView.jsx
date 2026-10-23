@@ -57,7 +57,10 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
   const [frames, setFrames] = useState(10);
   const [writeProb, setWriteProb] = useState(0.2);
 
+  const lastRequestIdRef = React.useRef(0);
+
   const fetchBenchmark = useCallback(async () => {
+    const requestId = ++lastRequestIdRef.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -67,11 +70,17 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
         throw new Error(`Benchmark matrix failed: ${res.status} ${res.statusText}`);
       }
       const json = await res.json();
-      setData(json);
+      if (requestId === lastRequestIdRef.current) {
+        setData(json);
+      }
     } catch (err) {
-      setError(err.message || 'Failed to fetch benchmark analysis');
+      if (requestId === lastRequestIdRef.current) {
+        setError(err.message || 'Failed to fetch benchmark analysis');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === lastRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [apiBaseUrl, seed, references, frames, writeProb]);
 
@@ -134,6 +143,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
   const empiricalTakeaways = useMemo(() => {
     if (!data?.raw_results) return null;
     const raw = data.raw_results;
+    const activeFrames = data?.parameters?.frames ?? frames;
 
     const loopRows = raw.filter((r) => r.workload === 'Loop');
     const loopHybrid = loopRows.find((r) => r.algorithm === 'AdaptiveHybrid');
@@ -144,7 +154,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
       const hybridHit = (loopHybrid.hit_ratio * 100).toFixed(1);
       const lruHit = (loopLru.hit_ratio * 100).toFixed(1);
       if (loopHybrid.hit_ratio > loopLru.hit_ratio) {
-        loopText = `Under cyclic loop access (working set > ${frames} frames), AdaptiveHybrid achieved ${hybridHit}% hit ratio vs LRU's ${lruHit}%.`;
+        loopText = `Under cyclic loop access (working set > ${activeFrames} frames), AdaptiveHybrid achieved ${hybridHit}% hit ratio vs LRU's ${lruHit}%.`;
       } else {
         loopText = `In this loop test, AdaptiveHybrid achieved ${hybridHit}% vs LRU's ${lruHit}%.`;
       }

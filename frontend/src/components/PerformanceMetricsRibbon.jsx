@@ -17,7 +17,10 @@ export default function PerformanceMetricsRibbon({ metrics, latencies, isLoading
 
   const hitPercent = (metrics.hit_ratio * 100).toFixed(1);
   const faultPercent = (metrics.fault_ratio * 100).toFixed(1);
-  const eatMs = (metrics.eat / 1_000_000).toFixed(3);
+  const eatMs =
+    metrics.eat !== undefined && metrics.eat !== null
+      ? (metrics.eat / 1_000_000).toFixed(3)
+      : '0.000';
   const diskReadMs = ((latencies?.disk_read_ns || 10000000) / 1e6).toFixed(0);
 
   const cards = [

@@ -86,20 +86,19 @@ export default function AlgorithmComparisonView({
       const hitRatio = total > 0 ? ((hits / total) * 100).toFixed(1) : '0.0';
       const dirtyWrites = slice.filter((s) => s.was_dirty_write_back).length;
 
-      // Estimate EAT
+      // Exact hardware EAT matching backend calculate_eat()
+      // Formula: (Hit Ratio * RAM Access) + (Fault Ratio * Disk Read) + ((Dirty Writes / Total) * Disk Write)
       const l1HitNs = 100;
       const diskReadNs = 10_000_000;
       const diskWriteNs = 10_000_000;
-      let totalLatency = 0;
-      for (const s of slice) {
-        if (s.action === 'HIT') {
-          totalLatency += l1HitNs;
-        } else {
-          totalLatency += l1HitNs + diskReadNs;
-          if (s.was_dirty_write_back) totalLatency += diskWriteNs;
-        }
-      }
-      const avgEat = total > 0 ? (totalLatency / total / 1e6).toFixed(3) : '0.000';
+      const hitRatioFrac = total > 0 ? hits / total : 0;
+      const faultRatioFrac = total > 0 ? faults / total : 0;
+      const dirtyRatioFrac = total > 0 ? dirtyWrites / total : 0;
+      const eatNs =
+        hitRatioFrac * l1HitNs +
+        faultRatioFrac * diskReadNs +
+        dirtyRatioFrac * diskWriteNs;
+      const avgEat = total > 0 ? (eatNs / 1e6).toFixed(3) : '0.000';
 
       stats[algo.id] = {
         hits,
@@ -214,7 +213,7 @@ export default function AlgorithmComparisonView({
               </span>
               <span className="text-zinc-600">&bull;</span>
               <span className="font-mono text-white font-semibold">
-                Access: Page {divergenceInfo.requestedPage} ({divergenceInfo.isWrite ? 'WRITE' : 'READ'})
+                Access: Page {divergenceInfo.requestedPage ?? '-'} ({divergenceInfo.isWrite ? 'STORE (WRITE)' : 'LOAD (READ)'})
               </span>
             </div>
 
@@ -305,7 +304,9 @@ export default function AlgorithmComparisonView({
 
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-400">Victim Eviction:</span>
-                      {hasEviction ? (
+                      {isHit ? (
+                        <span className="text-emerald-400 font-medium">None (Hit)</span>
+                      ) : hasEviction ? (
                         <span className="text-amber-400 font-bold">Evicted P{stepData.evicted_page}</span>
                       ) : (
                         <span className="text-emerald-400 font-medium">None (Free slot)</span>

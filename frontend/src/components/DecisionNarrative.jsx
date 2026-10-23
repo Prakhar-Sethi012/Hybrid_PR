@@ -59,7 +59,9 @@ export default function DecisionNarrative({ currentStep, algorithm = 'AdaptiveHy
 
         <div className="p-2.5 rounded-lg bg-[#000000] border border-[#222222] flex items-center justify-between">
           <span className="text-[11px] text-zinc-400 uppercase">Victim Selection</span>
-          {hasEviction ? (
+          {currentStep.action === 'HIT' ? (
+            <span className="text-emerald-400 font-semibold">None (Cache Hit)</span>
+          ) : hasEviction ? (
             <span className="text-amber-400 font-bold">Evicted P{currentStep.evicted_page}</span>
           ) : (
             <span className="text-emerald-400 font-semibold">Free Slot Filled</span>

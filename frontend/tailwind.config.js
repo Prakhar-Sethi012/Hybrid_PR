@@ -31,8 +31,13 @@ export default {
         'fault-pulse': 'faultPulse 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
         'frame-pop': 'framePop 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
         'flame-flicker': 'flameFlicker 1.5s infinite ease-in-out',
+        'modal-enter': 'modalEnter 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
       },
       keyframes: {
+        modalEnter: {
+          '0%': { opacity: '0', transform: 'scale(0.96)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
         hitPulse: {
           '0%': { transform: 'scale(0.98)' },
           '60%': { transform: 'scale(1.01)' },
