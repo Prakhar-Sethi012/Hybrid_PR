@@ -81,6 +81,51 @@ class TestSimulatorAPI(unittest.TestCase):
             self.assertEqual(len(comparison[algo]["execution_trace"]), 50)
             self.assertIn("eat", comparison[algo]["metrics"])
 
+    def test_custom_reference_string_simulate(self):
+        custom_seq = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5]
+        payload = {
+            "algorithm": "AdaptiveHybrid",
+            "frame_count": 3,
+            "references": len(custom_seq),
+            "write_probability": 0.5,
+            "seed": 42,
+            "custom_reference_string": custom_seq,
+        }
+        resp = self.client.post("/api/simulate", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+
+        self.assertEqual(data["reference_string"], custom_seq)
+        self.assertEqual(data["metrics"]["total_accesses"], len(custom_seq))
+        self.assertEqual(len(data["execution_trace"]), len(custom_seq))
+
+        # Check that steps with eviction have cp_breakdown with parsed math
+        evictions = [s for s in data["execution_trace"] if s["evicted_page"] is not None]
+        self.assertTrue(len(evictions) > 0)
+        first_eviction = evictions[0]
+        self.assertIsNotNone(first_eviction["cp_breakdown"])
+        cp = first_eviction["cp_breakdown"]
+        self.assertIn("score", cp)
+        self.assertIn("dirty_penalty", cp)
+        self.assertIn("total_cost", cp)
+        self.assertIn("lambda", cp)
+
+    def test_custom_reference_string_compare(self):
+        custom_seq = [1, 2, 3, 1, 4, 2, 5, 1]
+        payload = {
+            "frame_count": 3,
+            "references": len(custom_seq),
+            "write_probability": 0.2,
+            "seed": 42,
+            "custom_reference_string": custom_seq,
+        }
+        resp = self.client.post("/api/compare", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        comparison = data["comparison"]
+        for algo in ["AdaptiveHybrid", "FIFO", "LRU", "LFU"]:
+            self.assertEqual(len(comparison[algo]["execution_trace"]), len(custom_seq))
+
     def test_benchmark_endpoint(self):
         resp = self.client.get("/api/benchmark?references=80&frames=4&seed=42")
         self.assertEqual(resp.status_code, 200)

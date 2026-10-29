@@ -209,15 +209,21 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
         for res in access_results:
             # Extract C(p) math breakdown for interactive tooltips
             cp_breakdown = None
-            if hasattr(engine, "_last_victim_info") and engine._last_victim_info:
-                vinfo = engine._last_victim_info
-                if "cost" in vinfo and "s_decayed" in vinfo:
-                    cp_breakdown = {
-                        "score": round(vinfo.get("s_decayed", 0.0), 4),
-                        "dirty_penalty": round(vinfo.get("dirty_penalty", 0.0), 4),
-                        "total_cost": round(vinfo.get("cost", 0.0), 4),
-                        "lambda": round(vinfo.get("lambda", 0.5), 4),
-                    }
+            vinfo = getattr(res, "victim_info", None)
+            if vinfo and "cost" in vinfo and "s_decayed" in vinfo:
+                cp_breakdown = {
+                    "score": round(vinfo.get("s_decayed", 0.0), 4),
+                    "dirty_penalty": round(vinfo.get("dirty_penalty", 0.0), 4),
+                    "total_cost": round(vinfo.get("cost", 0.0), 4),
+                    "lambda": round(vinfo.get("lambda", 0.5), 4),
+                }
+            elif res.evicted_page is not None and "HYBRID" in str(req.algorithm).upper():
+                cp_breakdown = {
+                    "score": round(float(res.hybrid_score), 4),
+                    "dirty_penalty": 2.0 if res.was_dirty_write_back else 0.0,
+                    "total_cost": round(float(res.hybrid_score) + (2.0 if res.was_dirty_write_back else 0.0), 4),
+                    "lambda": round(float(getattr(engine, "lambda_value", 0.5)), 4),
+                }
             execution_trace.append({
                 "step_id": res.timestamp,
                 "requested_page": res.page_number,
@@ -298,6 +304,10 @@ class CompareRequest(BaseModel):
     window_size: Optional[int] = Field(default=50, ge=10, le=5000)
     upper_fault_threshold: Optional[float] = Field(default=0.20, ge=0.0, le=1.0)
     suspension_duration: Optional[int] = Field(default=2, ge=1, le=20)
+    custom_reference_string: Optional[List[int]] = Field(
+        default=None,
+        description="Optional custom reference string (array of page numbers). If provided, bypasses the workload generator.",
+    )
 
 
 @app.post("/api/compare")
@@ -307,13 +317,21 @@ def compare_algorithms(req: CompareRequest) -> Dict[str, Any]:
     Returns synchronized execution_trace arrays and metrics for each algorithm.
     """
     try:
-        trace = _generate_trace_for_workload(
-            workload_type=req.workload_type,
-            references=req.references,
-            page_count=req.page_count or 20,
-            write_prob=req.write_probability,
-            seed=req.seed,
-        )
+        if req.custom_reference_string:
+            import random as _rng
+            rnd = _rng.Random(req.seed or 42)
+            trace = [
+                (page_num, rnd.random() < req.write_probability)
+                for page_num in req.custom_reference_string
+            ]
+        else:
+            trace = _generate_trace_for_workload(
+                workload_type=req.workload_type,
+                references=req.references,
+                page_count=req.page_count or 20,
+                write_prob=req.write_probability,
+                seed=req.seed,
+            )
 
         algorithms = [
             PageReplacementPolicy.FIFO,
@@ -339,6 +357,15 @@ def compare_algorithms(req: CompareRequest) -> Dict[str, Any]:
 
             trace_data = []
             for res in access_results:
+                cp_breakdown = None
+                vinfo = getattr(res, "victim_info", None)
+                if vinfo and "cost" in vinfo and "s_decayed" in vinfo:
+                    cp_breakdown = {
+                        "score": round(vinfo.get("s_decayed", 0.0), 4),
+                        "dirty_penalty": round(vinfo.get("dirty_penalty", 0.0), 4),
+                        "total_cost": round(vinfo.get("cost", 0.0), 4),
+                        "lambda": round(vinfo.get("lambda", 0.5), 4),
+                    }
                 trace_data.append({
                     "step_id": res.timestamp,
                     "requested_page": res.page_number,
@@ -350,6 +377,7 @@ def compare_algorithms(req: CompareRequest) -> Dict[str, Any]:
                     "hybrid_score": round(res.hybrid_score, 4),
                     "memory_state": res.memory_state,
                     "decision_log": res.decision_log,
+                    "cp_breakdown": cp_breakdown,
                 })
 
             results[algo] = {

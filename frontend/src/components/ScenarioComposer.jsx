@@ -9,6 +9,14 @@ export default function ScenarioComposer({
   isOpen,
   onClose,
 }) {
+  const [customInput, setCustomInput] = useState(
+    config?.custom_reference_string ? config.custom_reference_string.join(', ') : ''
+  );
+
+  React.useEffect(() => {
+    setCustomInput(config?.custom_reference_string ? config.custom_reference_string.join(', ') : '');
+  }, [config?.custom_reference_string]);
+
   if (!isOpen) return null;
 
   const algorithms = [
@@ -272,18 +280,21 @@ export default function ScenarioComposer({
               />
             </div>
             {/* Custom Reference String */}
-            <div className="col-span-2 p-3 rounded-lg bg-[#000000] border border-[#222222]">
+            <div className="col-span-2 p-3 rounded-lg bg-[var(--bg-base)] border border-[var(--border-default)]">
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-1.5">
-                  <Hash className="w-3.5 h-3.5 text-zinc-400" />
-                  <span className="text-xs font-medium text-zinc-300 font-mono">
+                  <Hash className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                  <span className="text-xs font-medium text-[var(--text-primary)] font-mono">
                     Custom Reference String (Optional)
                   </span>
                 </div>
                 {config.custom_reference_string && (
                   <button
                     type="button"
-                    onClick={() => onChange({ ...config, custom_reference_string: null })}
+                    onClick={() => {
+                      setCustomInput('');
+                      onChange({ ...config, custom_reference_string: null });
+                    }}
                     className="text-[10px] font-mono text-rose-400 hover:text-rose-300 cursor-pointer"
                   >
                     Clear
@@ -292,22 +303,27 @@ export default function ScenarioComposer({
               </div>
               <textarea
                 rows={2}
-                placeholder="e.g.: 1,2,3,1,4,2,5,1 — comma-separated page numbers. Leave blank to use workload generator."
-                value={config.custom_reference_string ? config.custom_reference_string.join(',') : ''}
+                placeholder="e.g.: 1, 2, 3, 1, 4, 2, 5, 1 (space, comma, or newline separated page numbers)"
+                value={customInput}
                 onChange={(e) => {
-                  const raw = e.target.value.trim();
-                  if (!raw) {
+                  const raw = e.target.value;
+                  setCustomInput(raw);
+                  const trimmed = raw.trim();
+                  if (!trimmed) {
                     onChange({ ...config, custom_reference_string: null });
                     return;
                   }
-                  const parsed = raw.split(',').map((v) => parseInt(v.trim())).filter((n) => !isNaN(n));
+                  const parsed = trimmed
+                    .split(/[\s,]+/)
+                    .map((v) => parseInt(v.trim(), 10))
+                    .filter((n) => !isNaN(n));
                   onChange({ ...config, custom_reference_string: parsed.length > 0 ? parsed : null });
                 }}
-                className="w-full mt-1 px-3 py-2 rounded bg-[#121212] border border-[#2E2E2E] text-xs font-mono text-white focus:border-white outline-none resize-none placeholder:text-zinc-600"
+                className="w-full mt-1 px-3 py-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-xs font-mono text-[var(--text-primary)] focus:border-[var(--border-focus)] outline-none resize-none placeholder:text-[var(--text-tertiary)]"
                 aria-label="Custom reference string input"
               />
-              <p className="text-[10px] text-zinc-500 font-mono mt-1">
-                When provided, bypasses the workload generator entirely. Write probability still applies.
+              <p className="text-[10px] text-[var(--text-secondary)] font-mono mt-1">
+                When provided, bypasses the automated workload generator and executes this exact sequence.
               </p>
             </div>
           </div>

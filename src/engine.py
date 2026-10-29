@@ -488,6 +488,7 @@ class AccessResult:
     hybrid_score: float = 0.0
     decision_log: str = ""
     memory_state: Optional[List[Dict[str, Any]]] = None
+    victim_info: Optional[Dict[str, Any]] = None
 
     def __repr__(self) -> str:
         status = "HIT" if self.is_hit else "FAULT"
@@ -1020,6 +1021,7 @@ class SimulationEngine:
                 if was_dirty:
                     decision_log += " (Dirty write-back occurred)."
 
+                vinfo = dict(self._last_victim_info) if hasattr(self, "_last_victim_info") and self._last_victim_info else None
                 result = AccessResult(
                     is_hit=False,
                     process_id=proc.process_id,
@@ -1032,6 +1034,7 @@ class SimulationEngine:
                     timestamp=current_time,
                     hybrid_score=1.0,
                     decision_log=decision_log,
+                    victim_info=vinfo,
                 )
 
         # 5. Parameter Controller window tracking & dynamic lambda tuning

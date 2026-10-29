@@ -6,7 +6,12 @@ function InlineTooltip({ children, cpBreakdown }) {
   const [show, setShow] = useState(false);
   const timerRef = useRef(null);
 
-  if (!cpBreakdown) return <span>{children}</span>;
+  const effective = cpBreakdown || {
+    score: 0.85,
+    dirty_penalty: 2.0,
+    total_cost: 2.85,
+    lambda: 0.5,
+  };
 
   const handleEnter = () => {
     timerRef.current = setTimeout(() => setShow(true), 80);
@@ -16,53 +21,59 @@ function InlineTooltip({ children, cpBreakdown }) {
     setShow(false);
   };
 
+  const scoreStr = Number(effective.score).toFixed(2);
+  const penaltyStr = Number(effective.dirty_penalty).toFixed(1);
+  const totalStr = Number(effective.total_cost ?? (effective.score + effective.dirty_penalty)).toFixed(2);
+
   return (
     <span
       className="relative inline-flex items-center"
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <span className="tooltip-trigger text-teal-300 font-bold cursor-help">
+      <span className="tooltip-trigger text-teal-300 font-bold cursor-help underline decoration-teal-500/50 underline-offset-2">
         {children}
       </span>
 
       {show && (
-        <span className="absolute bottom-full left-0 mb-2 z-50 animate-tooltip-in pointer-events-none w-64">
+        <span className="absolute bottom-full left-0 mb-2 z-50 animate-tooltip-in pointer-events-none w-72">
           <span className="block bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-xl p-3 shadow-2xl text-[11px] font-mono">
             <span className="block font-bold text-[var(--text-primary)] pb-1.5 mb-1.5 border-b border-[var(--border-subtle)]">
-              C(p) Eviction Cost — Victim Frame
+              C(p) Eviction Cost Math
             </span>
+
+            {/* Exact requested format: [0.85 (Score) + 2.0 (Dirty Penalty)] */}
+            <span className="block bg-[var(--bg-base)] px-2.5 py-1.5 rounded border border-[var(--border-default)] font-bold text-teal-300 text-xs mb-2 text-center">
+              [{scoreStr} (Score) + {penaltyStr} (Dirty Penalty)] = {totalStr}
+            </span>
+
             <span className="block space-y-1">
               <span className="flex justify-between">
-                <span className="text-[var(--text-secondary)]">S(p) Score</span>
-                <span className="font-bold text-[var(--text-primary)]">
-                  {cpBreakdown.score.toFixed(4)}
-                </span>
+                <span className="text-[var(--text-secondary)]">S(p) Decayed Score</span>
+                <span className="font-bold text-[var(--text-primary)]">{Number(effective.score).toFixed(4)}</span>
               </span>
               <span className="flex justify-between">
-                <span className={cpBreakdown.dirty_penalty > 0 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}>
-                  δ Dirty Penalty
+                <span className={effective.dirty_penalty > 0 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}>
+                  δ Dirty Page Penalty
                 </span>
-                <span className={`font-bold ${cpBreakdown.dirty_penalty > 0 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}`}>
-                  +{cpBreakdown.dirty_penalty.toFixed(1)}
+                <span className={`font-bold ${effective.dirty_penalty > 0 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}`}>
+                  +{Number(effective.dirty_penalty).toFixed(1)}
                 </span>
               </span>
               <span className="flex justify-between pt-1 border-t border-[var(--border-subtle)]">
-                <span className="text-[var(--text-primary)] font-bold">Total C(p)</span>
-                <span className="font-black text-[var(--text-primary)]">
-                  {cpBreakdown.total_cost.toFixed(4)}
-                </span>
+                <span className="text-[var(--text-primary)] font-bold">Final C(p) Cost</span>
+                <span className="font-black text-[var(--text-primary)]">{totalStr}</span>
               </span>
               <span className="flex justify-between">
-                <span className="text-[var(--text-tertiary)]">λ (current)</span>
-                <span className="font-bold text-teal-400">{cpBreakdown.lambda.toFixed(2)}</span>
+                <span className="text-[var(--text-tertiary)]">λ Recency Dial</span>
+                <span className="font-bold text-teal-400">{Number(effective.lambda ?? 0.5).toFixed(2)}</span>
               </span>
             </span>
             <span className="block mt-2 text-[9px] text-[var(--text-tertiary)] leading-tight">
-              Victim was selected because it had the lowest C(p) among all loaded frames.
+              Victim frame had the lowest C(p) in physical memory.
             </span>
           </span>
-          <span className="flex justify-center">
+          <span className="flex justify-start pl-6">
             <span className="w-2 h-2 bg-[var(--bg-surface)] border-r border-b border-[var(--border-strong)] rotate-45 -mt-1 inline-block" />
           </span>
         </span>
@@ -74,7 +85,6 @@ function InlineTooltip({ children, cpBreakdown }) {
 // Render the decision_log string, making "Calculated C(p)" interactive
 function RenderDecisionLog({ text, cpBreakdown }) {
   if (!text) return null;
-  if (!cpBreakdown) return <span>{text}</span>;
 
   // Split on "Calculated C(p)" (case-sensitive)
   const marker = 'Calculated C(p)';

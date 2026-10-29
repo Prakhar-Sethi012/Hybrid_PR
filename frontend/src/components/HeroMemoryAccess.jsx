@@ -21,12 +21,11 @@ export default function HeroMemoryAccess({
 
   // Trigger EAT clock jump animation when a dirty write-back occurs
   useEffect(() => {
-    if (currentStep?.was_dirty_write_back && !prevDirtyRef.current) {
+    if (currentStep?.was_dirty_write_back) {
       setEatJump(true);
-      const t = setTimeout(() => setEatJump(false), 550);
+      const t = setTimeout(() => setEatJump(false), 650);
       return () => clearTimeout(t);
     }
-    prevDirtyRef.current = Boolean(currentStep?.was_dirty_write_back);
   }, [currentStep?.step_id, currentStep?.was_dirty_write_back]);
 
   if (!currentStep) {
@@ -85,19 +84,24 @@ export default function HeroMemoryAccess({
         </div>
 
         {/* Real-time Hardware Latency Badge — with EAT jump animation */}
-        <div
-          className={`flex items-center gap-1.5 text-xs font-mono px-3 py-1 rounded bg-[var(--bg-base)] border border-[var(--border-default)] ${
-            eatJump ? 'animate-eat-jump' : ''
-          }`}
-        >
-          <Clock className="w-3.5 h-3.5 text-[var(--text-secondary)]" aria-hidden="true" />
-          <span className="text-[var(--text-secondary)]">Cycle Latency:</span>
-          <strong className={`font-bold ${eatColor}`}>
-            {eatLabel}
-          </strong>
+        <div className="flex items-center gap-2">
           {isDirtyWriteBack && (
-            <Flame className="w-3 h-3 text-amber-400 animate-flame-flicker ml-0.5" />
+            <span className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-[#211100] text-amber-300 border border-amber-600 font-bold animate-eat-jump shadow-md">
+              <Flame className="w-3 h-3 text-amber-400 animate-flame-flicker" />
+              +10ms I/O CLOCK JUMP
+            </span>
           )}
+          <div
+            className={`flex items-center gap-1.5 text-xs font-mono px-3 py-1 rounded bg-[var(--bg-base)] border border-[var(--border-default)] transition-all ${
+              eatJump ? 'animate-eat-jump ring-2 ring-amber-500 border-amber-500' : ''
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-[var(--text-secondary)]" aria-hidden="true" />
+            <span className="text-[var(--text-secondary)]">Cycle Latency:</span>
+            <strong className={`font-bold ${eatColor}`}>
+              {eatLabel}
+            </strong>
+          </div>
         </div>
       </div>
 

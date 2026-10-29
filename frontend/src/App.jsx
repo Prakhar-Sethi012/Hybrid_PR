@@ -364,29 +364,9 @@ export default function App() {
               isLoading={isLoading}
             />
 
-            {/* Instruction Tape — full width above the 60/40 split */}
-            <div className="mb-4">
-              <div className="mb-1.5 flex items-center gap-2 text-[10px] font-mono text-[var(--text-tertiary)] uppercase tracking-wider">
-                <span>▶ Instruction Tape</span>
-                <span className="text-[var(--text-tertiary)]">
-                  {referenceString.length > 0 ? `${referenceString.length} references` : ''}
-                </span>
-                {config.custom_reference_string && (
-                  <span className="px-1.5 py-0.5 rounded bg-teal-900/50 text-teal-400 border border-teal-600/50 text-[9px] font-bold">
-                    CUSTOM STRING
-                  </span>
-                )}
-              </div>
-              <InstructionTape
-                referenceString={referenceString}
-                currentIndex={currentStepIndex}
-                executionTrace={traceList}
-              />
-            </div>
-
             {/* Split Observatory Deck: 60% Execution Core | 40% Silicon Memory Die */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* Left Column: Live Execution Core (7 cols) */}
+              {/* Left Column: Live Execution Core (7 cols / ~60%) */}
               <div className="lg:col-span-7 flex flex-col">
                 {/* Hero Access State */}
                 <HeroMemoryAccess
@@ -417,8 +397,34 @@ export default function App() {
                 />
               </div>
 
-              {/* Right Column: Physical RAM Matrix (5 cols) */}
-              <div className="lg:col-span-5 flex flex-col">
+              {/* Right Column: Physical RAM Matrix (5 cols / ~40%) */}
+              <div className="lg:col-span-5 flex flex-col gap-3">
+                {/* The Instruction Tape — horizontal scrolling ticker above the RAM */}
+                <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-3 sm:p-4">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-subtle)] text-[11px] font-mono">
+                    <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[var(--accent-hybrid)] animate-pulse inline-block" />
+                      Instruction Tape
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {config.custom_reference_string && (
+                        <span className="px-1.5 py-0.5 rounded bg-teal-900/50 text-teal-300 border border-teal-600/50 text-[9px] font-bold">
+                          CUSTOM
+                        </span>
+                      )}
+                      <span className="text-[var(--text-tertiary)]">
+                        Ref <strong className="text-[var(--text-primary)]">#{currentStepIndex + 1}</strong> / {referenceString.length}
+                      </span>
+                    </div>
+                  </div>
+                  <InstructionTape
+                    referenceString={referenceString}
+                    currentIndex={currentStepIndex}
+                    executionTrace={traceList}
+                  />
+                </div>
+
+                {/* Silicon RAM Frames */}
                 <PhysicalMemoryMap
                   memoryManager={displayedMemoryManager}
                   currentStepData={currentStep}
