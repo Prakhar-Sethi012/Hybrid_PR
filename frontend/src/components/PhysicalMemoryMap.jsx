@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Server, X, Flame, Info } from 'lucide-react';
+import { X } from 'lucide-react';
+import InstructionTape from './InstructionTape';
 
 // Floating C(p) Tooltip
-function CpTooltip({ frame, cpBreakdown }) {
+function CpTooltip({ frame, liveSp, liveCp }) {
   const [show, setShow] = useState(false);
   const timerRef = useRef(null);
 
@@ -14,62 +15,65 @@ function CpTooltip({ frame, cpBreakdown }) {
     setShow(false);
   };
 
-  const score = cpBreakdown?.score ?? frame.hybrid_score ?? 0;
   const penalty = frame.dirty ? 2.0 : 0.0;
-  const total = score + penalty;
 
   return (
-    <div
+    <span
       className="relative inline-flex items-center"
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <span className="tooltip-trigger text-[11px] font-mono text-[var(--text-secondary)] font-medium cursor-help">
-        C(p): {total.toFixed(2)}
+      <span className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors cursor-help">
+        S: {liveSp.toFixed(2)} · C: {liveCp.toFixed(2)}
       </span>
 
       {show && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 animate-tooltip-in pointer-events-none w-52">
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-xl p-3 shadow-2xl text-[11px] font-mono">
-            <div className="font-bold text-[var(--text-primary)] pb-1.5 mb-1.5 border-b border-[var(--border-subtle)]">
-              C(p) Eviction Cost — Frame #{frame.frame_id}
-            </div>
-            <div className="space-y-1">
-              <div className="flex justify-between">
-                <span className="text-[var(--text-secondary)]">S(p) Score</span>
-                <span className="font-bold text-[var(--text-primary)]">{score.toFixed(4)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className={frame.dirty ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}>
-                  δ Dirty Penalty
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 animate-tooltip-in pointer-events-none w-52 block">
+          <span className="block bg-[#161616] rounded-lg p-2.5 shadow-2xl text-[10px] font-mono text-zinc-300">
+            <span className="block font-bold text-zinc-100 pb-1 mb-1 border-b border-zinc-800">
+              Live Decay Math · Frame #{frame.frame_id}
+            </span>
+            <span className="block space-y-0.5">
+              <span className="flex justify-between">
+                <span className="text-zinc-500">Decayed S(p)</span>
+                <span className="font-semibold text-zinc-200">{liveSp.toFixed(4)}</span>
+              </span>
+              <span className="flex justify-between">
+                <span className={frame.dirty ? 'text-amber-400' : 'text-zinc-500'}>
+                  Dirty Penalty δ
                 </span>
-                <span className={`font-bold ${frame.dirty ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}`}>
+                <span className={frame.dirty ? 'text-amber-400 font-semibold' : 'text-zinc-500'}>
                   +{penalty.toFixed(1)}
                 </span>
-              </div>
-              <div className="flex justify-between pt-1 border-t border-[var(--border-subtle)]">
-                <span className="text-[var(--text-primary)] font-bold">Total C(p)</span>
-                <span className="font-black text-[var(--text-primary)]">{total.toFixed(4)}</span>
-              </div>
-            </div>
-            <div className="mt-2 text-[9px] text-[var(--text-tertiary)] leading-tight">
-              Lower C(p) = victim candidate. Dirty pages penalized to avoid I/O.
-            </div>
-          </div>
-          {/* Arrow */}
-          <div className="flex justify-center">
-            <div className="w-2 h-2 bg-[var(--bg-surface)] border-r border-b border-[var(--border-strong)] rotate-45 -mt-1" />
-          </div>
-        </div>
+              </span>
+              <span className="flex justify-between pt-0.5 border-t border-zinc-800">
+                <span className="text-zinc-200 font-bold">Live C(p)</span>
+                <span className="font-bold text-zinc-100">{liveCp.toFixed(4)}</span>
+              </span>
+            </span>
+          </span>
+          <span className="flex justify-center">
+            <span className="w-1.5 h-1.5 bg-[#161616] rotate-45 -mt-0.5 inline-block" />
+          </span>
+        </span>
       )}
-    </div>
+    </span>
   );
 }
 
+/**
+ * PhysicalMemoryMap — Minimalist silicon RAM frame visualizer.
+ * Incorporates InstructionTape seamlessly into the header area directly above RAM frames.
+ * Displays real-time decayed live_Sp and live_Cp math on each occupied frame card.
+ */
 export default function PhysicalMemoryMap({
   memoryManager,
   currentStepData = null,
   algorithm = 'AdaptiveHybrid',
+  referenceString = [],
+  currentIndex = 0,
+  executionTrace = [],
+  customReference = false,
 }) {
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [filter, setFilter] = useState('ALL'); // 'ALL', 'CLEAN', 'DIRTY', 'EMPTY'
@@ -83,7 +87,7 @@ export default function PhysicalMemoryMap({
   const emptyCount = totalFrames - occupiedCount;
   const utilPercent = totalFrames > 0 ? ((occupiedCount / totalFrames) * 100).toFixed(0) : 0;
 
-  // Trigger dirty eviction flash animation
+  // Trigger dirty eviction subtle flash
   useEffect(() => {
     if (currentStepData?.was_dirty_write_back && currentStepData?.frame_id !== undefined) {
       setFlashingFrameId(currentStepData.frame_id);
@@ -102,53 +106,37 @@ export default function PhysicalMemoryMap({
   const selectedFrame =
     selectedFrameId !== null ? frames.find((f) => f.frame_id === selectedFrameId) : null;
 
-  const cpBreakdown = currentStepData?.cp_breakdown || null;
-
   const filterBtns = [
-    { id: 'ALL', label: `All (${totalFrames})`, activeClass: 'bg-[var(--text-primary)] text-[var(--bg-base)] border-[var(--text-primary)] font-bold' },
-    { id: 'CLEAN', label: `Clean (${cleanCount})`, activeClass: 'bg-[var(--text-primary)] text-[var(--bg-base)] border-[var(--text-primary)] font-bold' },
-    { id: 'DIRTY', label: `Dirty (${dirtyCount})`, activeClass: 'bg-amber-500 text-black border-amber-500 font-bold' },
-    { id: 'EMPTY', label: `Vacant (${emptyCount})`, activeClass: 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border-focus)] font-bold' },
+    { id: 'ALL', label: `All ${totalFrames}` },
+    { id: 'CLEAN', label: `Clean ${cleanCount}` },
+    { id: 'DIRTY', label: `Dirty ${dirtyCount}` },
+    { id: 'EMPTY', label: `Vacant ${emptyCount}` },
   ];
 
   return (
-    <div
-      className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 sm:p-5 mb-4"
-      aria-label="Physical memory frame map"
-    >
-      {/* Header */}
-      <div className="pb-3 mb-3 border-b border-[var(--border-default)]">
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-primary)]">
-              <Server className="w-4 h-4" aria-hidden="true" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-[var(--text-primary)] tracking-tight font-sans">
-                Physical RAM Frames
-              </h3>
-              <p className="text-[11px] text-[var(--text-secondary)] font-mono">
-                Hardware memory die · Policy: {algorithm}
-              </p>
-            </div>
-          </div>
-
-          <span className="text-xs px-2.5 py-1 rounded bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-default)] font-mono font-bold">
-            {occupiedCount} / {totalFrames} ({utilPercent}%)
+    <div className="bg-[#111111] rounded-lg p-4 mb-3" aria-label="Physical memory frame map">
+      {/* Header & Filter Row */}
+      <div className="flex items-center justify-between pb-2 mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-zinc-200 tracking-tight font-sans">
+            Physical RAM
+          </span>
+          <span className="text-[10px] text-zinc-500 font-mono">
+            {occupiedCount}/{totalFrames} ({utilPercent}%)
           </span>
         </div>
 
-        {/* Filter Controls */}
-        <div className="grid grid-cols-4 gap-1.5 text-xs font-mono pt-1">
+        {/* Minimalist Filter Pills — unboxed, typography driven */}
+        <div className="flex items-center gap-1 text-[11px] font-mono">
           {filterBtns.map((btn) => (
             <button
               key={btn.id}
               type="button"
               onClick={() => setFilter(btn.id)}
-              className={`py-1.5 rounded text-center transition-all cursor-pointer font-medium border ${
+              className={`px-2 py-0.5 rounded transition-colors cursor-pointer ${
                 filter === btn.id
-                  ? btn.activeClass
-                  : 'bg-[var(--bg-base)] text-[var(--text-secondary)] border-[var(--border-default)] hover:text-[var(--text-primary)] hover:border-[var(--border-focus)]'
+                  ? 'bg-zinc-800 text-zinc-100 font-semibold'
+                  : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               {btn.label}
@@ -157,20 +145,26 @@ export default function PhysicalMemoryMap({
         </div>
       </div>
 
-      {/* C(p) Info strip — only for AdaptiveHybrid */}
-      {algorithm === 'AdaptiveHybrid' && cpBreakdown && (
-        <div className="mb-3 p-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center gap-2 text-xs font-mono">
-          <Info className="w-3.5 h-3.5 text-[var(--accent-hybrid)] flex-shrink-0" />
-          <span className="text-[var(--text-secondary)]">Last victim cost:</span>
-          <span className="font-bold text-[var(--text-primary)]">
-            {cpBreakdown.score} (S) + {cpBreakdown.dirty_penalty} (δ) = {cpBreakdown.total_cost} C(p)
-          </span>
-          <span className="ml-auto text-[var(--text-tertiary)]">λ={cpBreakdown.lambda}</span>
+      {/* Seamlessly Integrated Instruction Tape directly above RAM frames */}
+      {referenceString && referenceString.length > 0 && (
+        <div className="mb-3 pt-1 border-t border-zinc-900">
+          <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 mb-1">
+            <span className="text-zinc-400 font-medium">Reference Stream</span>
+            <span className="text-zinc-500">
+              {customReference && <span className="text-amber-400 mr-1.5 font-medium">custom</span>}
+              Ref #{currentIndex + 1} / {referenceString.length}
+            </span>
+          </div>
+          <InstructionTape
+            referenceString={referenceString}
+            currentIndex={currentIndex}
+            executionTrace={executionTrace}
+          />
         </div>
       )}
 
-      {/* Silicon Memory Frames Grid */}
-      <div className="grid grid-cols-2 gap-2.5">
+      {/* Silicon Memory Frames Grid — 95% monochrome, unboxed cards */}
+      <div className="grid grid-cols-2 gap-2">
         {filteredFrames.map((frame) => {
           const isTargeted = currentStepData?.frame_id === frame.frame_id;
           const isSelected = selectedFrameId === frame.frame_id;
@@ -178,127 +172,92 @@ export default function PhysicalMemoryMap({
           const isDirty = frame.dirty;
           const isFlashing = flashingFrameId === frame.frame_id;
 
-          let cardBorder = 'border-[var(--border-subtle)] bg-[var(--bg-base)]';
-          let badgeText = 'VACANT';
-          let badgeStyle = 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border-[var(--border-default)]';
-
-          if (isOccupied) {
-            if (isDirty) {
-              cardBorder = 'border-amber-600/60 bg-[#120B02]';
-              badgeText = 'DIRTY';
-              badgeStyle = 'bg-[#211100] text-amber-300 border-amber-600 font-bold';
-            } else {
-              cardBorder = 'border-[var(--border-default)] bg-[var(--bg-surface)]';
-              badgeText = 'CLEAN';
-              badgeStyle = 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-default)] font-medium';
-            }
-          } else {
-            cardBorder = 'border-dashed border-[var(--border-subtle)] bg-[var(--bg-base)]';
-          }
+          // Real-time decayed math from backend live snapshot
+          const liveSp = frame.live_Sp !== undefined
+            ? frame.live_Sp
+            : (frame.hybrid_score ?? 1.0);
+          const liveCp = frame.live_Cp !== undefined
+            ? frame.live_Cp
+            : (liveSp + (isDirty ? 2.0 : 0.0));
 
           return (
             <div
               key={frame.frame_id}
               onClick={() => setSelectedFrameId(frame.frame_id === selectedFrameId ? null : frame.frame_id)}
-              className={`p-3 rounded-lg border text-xs transition-all duration-150 cursor-pointer relative flex flex-col justify-between ${cardBorder} ${
-                isFlashing
-                  ? 'animate-dirty-flash'
-                  : isTargeted
-                  ? 'ring-2 ring-[var(--text-primary)] ring-offset-1 ring-offset-[var(--bg-base)] animate-frame-pop'
+              className={`p-2.5 rounded-md transition-all duration-100 cursor-pointer relative flex flex-col justify-between ${
+                isTargeted
+                  ? 'bg-zinc-800/90 text-white shadow-sm'
                   : isSelected
-                  ? 'ring-2 ring-[var(--border-focus)] border-[var(--text-primary)]'
-                  : 'hover:border-[var(--border-focus)]'
-              }`}
+                  ? 'bg-zinc-800/60 text-zinc-100'
+                  : 'bg-[#181818] hover:bg-[#1C1C1C] text-zinc-300'
+              } ${isFlashing ? 'animate-dirty-flash' : ''}`}
             >
-              {/* Header: Frame Index & Status Badge */}
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-mono text-[11px] font-bold text-[var(--text-secondary)]">
+              {/* Header: Frame Index & Status Badge (tiny dot, not large block) */}
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-mono text-[10px] text-zinc-500">
                   F#{String(frame.frame_id).padStart(2, '0')}
                 </span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${badgeStyle} flex items-center gap-1`}>
-                  {isDirty && <Flame className="w-2.5 h-2.5 text-amber-400 animate-flame-flicker" />}
-                  <span>{badgeText}</span>
-                </span>
+
+                {isOccupied ? (
+                  isDirty ? (
+                    <span className="flex items-center gap-1 text-[10px] text-amber-400 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      dirty
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[10px] text-zinc-500 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+                      clean
+                    </span>
+                  )
+                ) : (
+                  <span className="text-[10px] text-zinc-600 font-mono">vacant</span>
+                )}
               </div>
 
               {/* Resident Virtual Page */}
-              <div className="my-1.5 text-center">
+              <div className="my-1 text-center">
                 {isOccupied ? (
-                  <div>
-                    <div className="text-2xl font-black font-mono text-[var(--text-primary)] tracking-tight">
-                      P{String(frame.page_number).padStart(2, '0')}
-                    </div>
-                    <div className="text-[10px] font-mono text-[var(--text-tertiary)] mt-0.5">
-                      Virtual Page
-                    </div>
+                  <div className="text-xl font-bold font-mono text-zinc-100 tracking-tight">
+                    P{String(frame.page_number).padStart(2, '0')}
                   </div>
                 ) : (
-                  <div className="text-xs font-mono text-[var(--text-tertiary)] italic py-2">
-                    Empty Slot
+                  <div className="text-xs font-mono text-zinc-600 italic py-1">
+                    —
                   </div>
                 )}
               </div>
 
-              {/* Bottom: S(p) Score & C(p) Cost — Omnipresent */}
-              <div className="pt-1.5 border-t border-[var(--border-subtle)] space-y-1">
+              {/* Bottom: Live Decayed S(p) & C(p) — unboxed, muted gray */}
+              <div className="mt-1 flex items-center justify-between">
                 {isOccupied ? (
-                  <>
-                    <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-secondary)]">
-                      <span>S(p): {frame.hybrid_score !== undefined ? frame.hybrid_score.toFixed(2) : '1.00'}</span>
-                      <span className="text-[var(--text-tertiary)]">×{frame.access_count ?? 1}</span>
-                    </div>
-                    {/* C(p) always shown — hover for tooltip */}
-                    <CpTooltip frame={frame} cpBreakdown={isTargeted ? cpBreakdown : null} />
-                  </>
+                  <CpTooltip frame={frame} liveSp={liveSp} liveCp={liveCp} />
                 ) : (
-                  <span className="text-[11px] font-mono text-[var(--text-tertiary)]">Unallocated</span>
+                  <span className="text-[10px] font-mono text-zinc-600">unallocated</span>
+                )}
+
+                {isTargeted && (
+                  <span className="text-[9px] font-mono text-zinc-400 font-semibold uppercase">
+                    active
+                  </span>
                 )}
               </div>
-
-              {/* Active Marker */}
-              {isTargeted && (
-                <div className="absolute -top-2 right-2 bg-[var(--text-primary)] text-[var(--bg-base)] text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow uppercase">
-                  ACTIVE
-                </div>
-              )}
-
-              {/* Dirty eviction overlay */}
-              {isFlashing && (
-                <div className="absolute inset-0 rounded-lg bg-amber-500/10 pointer-events-none" />
-              )}
             </div>
           );
         })}
       </div>
 
-      {/* Frame Inspector Drawer */}
+      {/* Minimal Frame Inspector Drawer (when clicked) */}
       {selectedFrame && (
-        <div className="mt-3 p-3.5 rounded-lg bg-[var(--bg-base)] border border-[var(--border-default)]">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-subtle)]">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xs text-[var(--text-primary)] font-sans">
-                Frame #{selectedFrame.frame_id} Inspector
-              </span>
-              <span
-                className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
-                  selectedFrame.is_occupied
-                    ? selectedFrame.dirty
-                      ? 'bg-[#211100] text-amber-300 border-amber-600'
-                      : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-default)]'
-                    : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border-[var(--border-default)]'
-                }`}
-              >
-                {selectedFrame.is_occupied
-                  ? selectedFrame.dirty
-                    ? 'DIRTY — +10ms Disk Flush on Eviction'
-                    : 'CLEAN — 0ms Instant Eviction'
-                  : 'VACANT'}
-              </span>
-            </div>
+        <div className="mt-3 p-3 rounded bg-[#161616] text-xs font-mono">
+          <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-zinc-800">
+            <span className="font-bold text-zinc-200">
+              Frame #{selectedFrame.frame_id} Inspector
+            </span>
             <button
               type="button"
               onClick={() => setSelectedFrameId(null)}
-              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded hover:bg-[var(--bg-elevated)] cursor-pointer"
+              className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
               aria-label="Close inspector"
             >
               <X className="w-3.5 h-3.5" />
@@ -306,34 +265,32 @@ export default function PhysicalMemoryMap({
           </div>
 
           {selectedFrame.is_occupied ? (
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              <div className="p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
-                <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">Page Number</span>
-                <span className="text-sm font-bold text-[var(--text-primary)]">Page {selectedFrame.page_number}</span>
+            <div className="grid grid-cols-2 gap-2 text-zinc-400">
+              <div>
+                <span className="text-[10px] text-zinc-500 uppercase block">Resident Page</span>
+                <span className="text-zinc-200 font-bold">Page {selectedFrame.page_number}</span>
               </div>
-              <div className="p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
-                <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">Hybrid Score S(p)</span>
-                <span className="text-sm font-bold text-[var(--text-primary)]">
-                  {selectedFrame.hybrid_score !== undefined ? selectedFrame.hybrid_score.toFixed(4) : '1.0000'}
+              <div>
+                <span className="text-[10px] text-zinc-500 uppercase block">Status</span>
+                <span className={selectedFrame.dirty ? 'text-amber-400' : 'text-zinc-300'}>
+                  {selectedFrame.dirty ? 'Dirty (+10ms flush)' : 'Clean (0ms discard)'}
                 </span>
               </div>
-              <div className="p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
-                <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">Access Frequency</span>
-                <span className="text-sm font-bold text-[var(--text-primary)]">{selectedFrame.access_count ?? 1} Hits</span>
+              <div>
+                <span className="text-[10px] text-zinc-500 uppercase block">Live Decayed S(p)</span>
+                <span className="text-zinc-200 font-bold">
+                  {(selectedFrame.live_Sp ?? selectedFrame.hybrid_score ?? 1.0).toFixed(4)}
+                </span>
               </div>
-              <div className="p-2 rounded bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
-                <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">C(p) Eviction Cost</span>
-                <span className={`text-sm font-bold ${selectedFrame.dirty ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {selectedFrame.dirty
-                    ? `${((selectedFrame.hybrid_score ?? 1) + 2).toFixed(2)} (Dirty +2.0)`
-                    : `${(selectedFrame.hybrid_score ?? 1).toFixed(2)} (Clean)`}
+              <div>
+                <span className="text-[10px] text-zinc-500 uppercase block">Live C(p) Cost</span>
+                <span className="text-zinc-200 font-bold">
+                  {(selectedFrame.live_Cp ?? ((selectedFrame.hybrid_score ?? 1.0) + (selectedFrame.dirty ? 2.0 : 0.0))).toFixed(4)}
                 </span>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-[var(--text-secondary)] font-mono py-1">
-              This frame slot is currently vacant and ready for zero-overhead allocation.
-            </p>
+            <p className="text-zinc-500">Vacant memory slot.</p>
           )}
         </div>
       )}

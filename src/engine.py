@@ -1052,10 +1052,33 @@ class SimulationEngine:
         return result
 
     def get_memory_snapshot(self) -> List[Dict[str, Any]]:
-        """Returns snapshot of physical memory frames at current step."""
+        """Returns snapshot of physical memory frames at current step with live real-time decay."""
         snapshot = []
+        current_time = self.clock.current_time()
+        lambda_val = float(getattr(self, "lambda_value", 0.5))
+        delta_val = float(getattr(self, "delta", 2.0))
+
         for i in range(self.memory_manager.frame_count):
             frame = self.memory_manager.get_frame(i)
+            live_Sp = 0.0
+            live_Cp = 0.0
+            if frame.is_occupied:
+                delta_t = max(0.0, float(current_time - frame.last_referenced_time))
+                power = lambda_val * delta_t
+                if power > 700:
+                    live_Sp = 0.0
+                else:
+                    live_Sp = float(frame.hybrid_score) * (0.5 ** power)
+
+                is_dirty = bool(frame.dirty_bit)
+                if not is_dirty and frame.process_id is not None and frame.page_number is not None:
+                    owner = self.get_process(frame.process_id)
+                    if owner:
+                        entry = owner.get_page_entry(frame.page_number)
+                        if entry and entry.dirty:
+                            is_dirty = True
+                live_Cp = live_Sp + (delta_val if is_dirty else 0.0)
+
             snapshot.append({
                 "frame_id": frame.frame_id,
                 "is_occupied": bool(frame.is_occupied),
@@ -1064,6 +1087,10 @@ class SimulationEngine:
                 "process_id": frame.process_id,
                 "dirty": bool(frame.dirty_bit),
                 "hybrid_score": round(float(frame.hybrid_score), 4),
+                "live_Sp": round(live_Sp, 4),
+                "live_Cp": round(live_Cp, 4),
+                "live_sp": round(live_Sp, 4),
+                "live_cp": round(live_Cp, 4),
                 "access_count": int(frame.access_count),
                 "last_referenced_time": int(frame.last_referenced_time),
                 "load_time": int(frame.load_time),

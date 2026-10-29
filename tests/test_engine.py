@@ -251,6 +251,20 @@ class TestSimulationEngineStage3(unittest.TestCase):
         self.assertEqual(self.engine.metrics.dirty_write_backs, 1)
         self.assertEqual(int(self.engine.clock), 6)
 
+        # Verify live decay Sp and Cp in memory snapshot
+        last_step = results[-1]
+        self.assertIsNotNone(last_step.memory_state)
+        for frame in last_step.memory_state:
+            self.assertIn("live_Sp", frame)
+            self.assertIn("live_Cp", frame)
+            if frame["is_occupied"]:
+                # live_Sp should be <= hybrid_score due to decay over time
+                self.assertLessEqual(frame["live_Sp"], frame["hybrid_score"] + 1e-6)
+                if frame["dirty"]:
+                    self.assertAlmostEqual(frame["live_Cp"], frame["live_Sp"] + 2.0, places=3)
+                else:
+                    self.assertAlmostEqual(frame["live_Cp"], frame["live_Sp"], places=3)
+
 
 if __name__ == "__main__":
     unittest.main()

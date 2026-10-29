@@ -339,17 +339,17 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col">
         {/* Error Notification */}
         {error && (
-          <div className="mb-4 p-4 rounded-xl bg-rose-950/60 border border-rose-500 text-rose-200 text-xs flex items-center justify-between font-sans animate-fault-pulse">
-            <div className="flex items-center gap-2.5">
-              <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+          <div className="mb-3 p-3 rounded-lg bg-rose-950/40 text-rose-300 text-xs flex items-center justify-between font-mono">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
               <span>Simulation Error: {error}</span>
             </div>
             <button
               type="button"
               onClick={() => runSimulation()}
-              className="btn-secondary px-3 py-1 rounded text-xs font-bold cursor-pointer"
+              className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-900 text-white text-xs cursor-pointer"
             >
-              Retry Simulation
+              Retry
             </button>
           </div>
         )}
@@ -398,37 +398,16 @@ export default function App() {
               </div>
 
               {/* Right Column: Physical RAM Matrix (5 cols / ~40%) */}
-              <div className="lg:col-span-5 flex flex-col gap-3">
-                {/* The Instruction Tape — horizontal scrolling ticker above the RAM */}
-                <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-3 sm:p-4">
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-subtle)] text-[11px] font-mono">
-                    <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[var(--accent-hybrid)] animate-pulse inline-block" />
-                      Instruction Tape
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {config.custom_reference_string && (
-                        <span className="px-1.5 py-0.5 rounded bg-teal-900/50 text-teal-300 border border-teal-600/50 text-[9px] font-bold">
-                          CUSTOM
-                        </span>
-                      )}
-                      <span className="text-[var(--text-tertiary)]">
-                        Ref <strong className="text-[var(--text-primary)]">#{currentStepIndex + 1}</strong> / {referenceString.length}
-                      </span>
-                    </div>
-                  </div>
-                  <InstructionTape
-                    referenceString={referenceString}
-                    currentIndex={currentStepIndex}
-                    executionTrace={traceList}
-                  />
-                </div>
-
-                {/* Silicon RAM Frames */}
+              <div className="lg:col-span-5 flex flex-col">
+                {/* Silicon RAM Frames with Seamless Header Instruction Tape */}
                 <PhysicalMemoryMap
                   memoryManager={displayedMemoryManager}
                   currentStepData={currentStep}
                   algorithm={config.algorithm}
+                  referenceString={referenceString}
+                  currentIndex={currentStepIndex}
+                  executionTrace={traceList}
+                  customReference={Boolean(config.custom_reference_string)}
                 />
               </div>
             </div>
@@ -465,13 +444,13 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] py-3 px-6 text-xs text-[var(--text-tertiary)] font-sans mt-auto">
+      <footer className="border-t border-zinc-900 bg-black py-3 px-6 text-[11px] text-zinc-500 font-mono mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            HybridMemoryLab · Discrete-Event Systems Memory Simulator
+            HybridMemoryLab · Discrete-Event OS Memory Simulator
           </span>
-          <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
-            Hardware: RAM 100ns · Fault Read 10ms · Dirty Flush δ 10ms
+          <span className="text-zinc-600">
+            Hardware: RAM 100ns · Read 10ms · Dirty Flush δ 10ms
           </span>
         </div>
       </footer>

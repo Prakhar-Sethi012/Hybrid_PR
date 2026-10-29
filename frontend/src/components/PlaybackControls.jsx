@@ -11,6 +11,10 @@ import {
   Gauge,
 } from 'lucide-react';
 
+/**
+ * PlaybackControls — Minimalist, borderless timeline transport control.
+ * Adheres strictly to Vercel/Linear minimalism: 95% monochrome, flat fills, zero chunky borders.
+ */
 export default function PlaybackControls({
   currentStep,
   totalSteps,
@@ -28,7 +32,7 @@ export default function PlaybackControls({
     { label: '5x', ms: 40 },
   ];
 
-  // Jump to next fault
+  // Jump forward to the next page fault
   const handleNextFault = () => {
     if (!trace || trace.length === 0) return;
     for (let i = currentStep + 1; i < trace.length; i++) {
@@ -39,7 +43,7 @@ export default function PlaybackControls({
     }
   };
 
-  // Jump to next eviction
+  // Jump forward to the next page eviction
   const handleNextEviction = () => {
     if (!trace || trace.length === 0) return;
     for (let i = currentStep + 1; i < trace.length; i++) {
@@ -54,35 +58,34 @@ export default function PlaybackControls({
 
   return (
     <div
-      className="bg-[#0A0A0A] border border-[#222222] rounded-xl p-4 mb-4"
+      className="bg-[#111111] rounded-lg p-4 mb-3"
       aria-label="Simulation trace transport controls"
     >
-      {/* Top Status & Fast Jump Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-[#222222] text-xs">
+      {/* Top Meta & Fast Jump Strip — unboxed, typography driven */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 text-xs">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-white text-xs uppercase tracking-wider font-mono">
+          <span className="font-semibold text-zinc-300 font-sans tracking-tight">
             Trace Transport
           </span>
-          <span className="text-zinc-600">&bull;</span>
-          <span className="font-mono text-zinc-300">
-            Step <strong className="text-white font-bold">{totalSteps > 0 ? currentStep + 1 : 0}</strong> of{' '}
-            <strong className="text-white">{totalSteps}</strong>
+          <span className="text-zinc-600">·</span>
+          <span className="font-mono text-zinc-400">
+            Step <strong className="text-zinc-100">{totalSteps > 0 ? currentStep + 1 : 0}</strong> / {totalSteps}
           </span>
-          <span className="font-mono text-zinc-500">
+          <span className="font-mono text-zinc-600">
             ({progressPercent}%)
           </span>
         </div>
 
-        {/* Jump Buttons */}
+        {/* Minimalist Jump Buttons */}
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleNextFault}
             disabled={totalSteps <= 1}
-            className="px-2.5 py-1 rounded-md border border-rose-800 bg-[#180404] hover:bg-[#250808] text-rose-300 text-xs font-mono font-medium transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40"
-            title="Jump forward to the next page fault"
+            className="px-2.5 py-1 rounded bg-[#181818] hover:bg-[#202020] text-zinc-300 hover:text-white text-xs font-mono transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-30"
+            title="Jump forward to next page fault"
           >
-            <AlertOctagon className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
             <span>Next Fault</span>
           </button>
 
@@ -90,17 +93,17 @@ export default function PlaybackControls({
             type="button"
             onClick={handleNextEviction}
             disabled={totalSteps <= 1}
-            className="px-2.5 py-1 rounded-md border border-amber-800 bg-[#180F02] hover:bg-[#251804] text-amber-300 text-xs font-mono font-medium transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40"
-            title="Jump forward to the next page eviction"
+            className="px-2.5 py-1 rounded bg-[#181818] hover:bg-[#202020] text-zinc-300 hover:text-white text-xs font-mono transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-30"
+            title="Jump forward to next page eviction"
           >
-            <ArrowRight className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span>Next Eviction</span>
           </button>
         </div>
       </div>
 
-      {/* Accessible Range Scrubber */}
-      <div className="mb-4 relative">
+      {/* Minimalist Scrubber Track */}
+      <div className="mb-3">
         <input
           type="range"
           min="0"
@@ -108,21 +111,21 @@ export default function PlaybackControls({
           value={currentStep}
           onChange={(e) => onStepChange(Number(e.target.value))}
           disabled={totalSteps <= 1}
-          className="w-full cursor-pointer relative z-10"
+          className="w-full cursor-pointer h-1.5 bg-zinc-800 rounded-lg appearance-none accent-zinc-200"
           aria-label="Simulation trace position scrubber"
         />
       </div>
 
-      {/* Main Transport Control Strip */}
+      {/* Transport Controls Row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Playback Buttons Group */}
-        <div className="flex items-center gap-1.5">
+        {/* Playback Button Group */}
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => onStepChange(0)}
             disabled={currentStep === 0 || totalSteps <= 1}
-            className="btn-secondary p-2 rounded-lg disabled:opacity-30 cursor-pointer"
-            title="Jump to Start (Home)"
+            className="p-1.5 rounded bg-[#181818] hover:bg-[#222222] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-colors cursor-pointer"
+            title="Jump to Start"
             aria-label="Jump to start"
           >
             <SkipBack className="w-4 h-4" />
@@ -132,35 +135,35 @@ export default function PlaybackControls({
             type="button"
             onClick={() => onStepChange(Math.max(0, currentStep - 1))}
             disabled={currentStep === 0 || totalSteps <= 1}
-            className="btn-secondary p-2 rounded-lg disabled:opacity-30 cursor-pointer"
-            title="Step Backward (Left Arrow)"
+            className="p-1.5 rounded bg-[#181818] hover:bg-[#222222] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-colors cursor-pointer"
+            title="Step Backward"
             aria-label="Step backward"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
-          {/* Main Play / Pause Button: Solid AMOLED White, No Gradient */}
+          {/* Primary Play/Pause Button — Monochrome, clean */}
           <button
             type="button"
             onClick={onPlayPause}
             disabled={totalSteps <= 1}
-            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 ${
+            className={`px-3.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-30 ${
               isPlaying
-                ? 'bg-amber-500 hover:bg-amber-400 text-black border border-amber-500'
-                : 'btn-primary'
+                ? 'bg-zinc-200 text-zinc-950 hover:bg-white'
+                : 'bg-zinc-100 text-zinc-950 hover:bg-white'
             }`}
-            title="Toggle Simulation Playback (Space)"
+            title="Toggle Simulation Playback"
             aria-label={isPlaying ? 'Pause trace' : 'Play trace'}
           >
             {isPlaying ? (
               <>
-                <Pause className="w-4 h-4 fill-current" aria-hidden="true" />
-                <span>PAUSE</span>
+                <Pause className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                <span>Pause</span>
               </>
             ) : (
               <>
-                <Play className="w-4 h-4 fill-current" aria-hidden="true" />
-                <span>PLAY</span>
+                <Play className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                <span>Play</span>
               </>
             )}
           </button>
@@ -169,8 +172,8 @@ export default function PlaybackControls({
             type="button"
             onClick={() => onStepChange(Math.min(totalSteps - 1, currentStep + 1))}
             disabled={currentStep >= totalSteps - 1 || totalSteps <= 1}
-            className="btn-secondary p-2 rounded-lg disabled:opacity-30 cursor-pointer"
-            title="Step Forward (Right Arrow)"
+            className="p-1.5 rounded bg-[#181818] hover:bg-[#222222] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-colors cursor-pointer"
+            title="Step Forward"
             aria-label="Step forward"
           >
             <ChevronRight className="w-4 h-4" />
@@ -180,27 +183,27 @@ export default function PlaybackControls({
             type="button"
             onClick={() => onStepChange(Math.max(0, totalSteps - 1))}
             disabled={currentStep >= totalSteps - 1 || totalSteps <= 1}
-            className="btn-secondary p-2 rounded-lg disabled:opacity-30 cursor-pointer"
-            title="Jump to End (End)"
+            className="p-1.5 rounded bg-[#181818] hover:bg-[#222222] text-zinc-400 hover:text-zinc-100 disabled:opacity-20 transition-colors cursor-pointer"
+            title="Jump to End"
             aria-label="Jump to end"
           >
             <SkipForward className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Playback Speed Switcher */}
-        <div className="flex items-center gap-1.5 bg-[#000000] p-1 rounded-lg border border-[#222222] text-xs font-mono">
+        {/* Minimal Speed Switcher */}
+        <div className="flex items-center gap-1 bg-[#181818] p-1 rounded text-xs font-mono">
           <Gauge className="w-3.5 h-3.5 text-zinc-500 ml-1 mr-0.5" aria-hidden="true" />
-          <span className="text-[11px] text-zinc-400 mr-1">Speed:</span>
+          <span className="text-[11px] text-zinc-500 mr-1">Speed</span>
           {speeds.map((s) => (
             <button
               key={s.label}
               type="button"
               onClick={() => onSpeedChange(s.ms)}
-              className={`px-2 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+              className={`px-2 py-0.5 rounded text-xs transition-colors cursor-pointer ${
                 playbackSpeed === s.ms
-                  ? 'bg-white text-black'
-                  : 'text-zinc-400 hover:text-white'
+                  ? 'bg-zinc-700 text-zinc-100 font-semibold'
+                  : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               {s.label}
@@ -208,14 +211,14 @@ export default function PlaybackControls({
           ))}
         </div>
 
-        {/* Keyboard Hints Pill */}
-        <div className="hidden md:flex items-center gap-1.5 text-[11px] font-mono text-zinc-400 bg-[#000000] px-2.5 py-1 rounded-lg border border-[#222222]">
-          <kbd className="px-1.5 py-0.5 rounded bg-[#141414] text-white border border-[#2E2E2E]">Space</kbd>
-          <span>Play/Pause</span>
-          <span className="text-zinc-600">&bull;</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-[#141414] text-white border border-[#2E2E2E]">&larr;</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-[#141414] text-white border border-[#2E2E2E]">&rarr;</kbd>
-          <span>Step</span>
+        {/* Minimal Keyboard Hint */}
+        <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-mono text-zinc-500">
+          <kbd className="px-1.5 py-0.5 rounded bg-[#181818] text-zinc-300">Space</kbd>
+          <span>play/pause</span>
+          <span className="text-zinc-700">·</span>
+          <kbd className="px-1.5 py-0.5 rounded bg-[#181818] text-zinc-300">←</kbd>
+          <kbd className="px-1.5 py-0.5 rounded bg-[#181818] text-zinc-300">→</kbd>
+          <span>step</span>
         </div>
       </div>
     </div>

@@ -10,9 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import {
-  BarChart3,
   RefreshCw,
-  Activity,
   AlertCircle,
   Download,
   FileText,
@@ -22,21 +20,21 @@ import {
 function BenchmarkTooltip({ active, payload, label, unitSuffix, frames, references }) {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-xl p-3.5 text-xs shadow-2xl font-sans">
-        <div className="font-bold text-[var(--text-primary)] mb-2.5 pb-1.5 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4">
-          <span>Workload: {label}</span>
-          <span className="text-[10px] text-[var(--text-tertiary)] font-mono font-semibold">{frames} Frames &bull; {references} Refs</span>
+      <div className="bg-[#161616] rounded-lg p-3 text-xs font-sans shadow-2xl">
+        <div className="font-bold text-zinc-100 mb-2 pb-1 border-b border-zinc-800 flex items-center justify-between gap-4">
+          <span>{label}</span>
+          <span className="text-[10px] text-zinc-500 font-mono">{frames} Frames · {references} Refs</span>
         </div>
-        <div className="space-y-1.5 font-mono">
+        <div className="space-y-1 font-mono text-[11px]">
           {payload.map((entry, index) => (
             <div key={index} className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: entry.color }} />
-                <span className={entry.name === 'AdaptiveHybrid' ? 'font-bold text-teal-400' : 'text-[var(--text-secondary)]'}>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className={entry.name === 'AdaptiveHybrid' ? 'font-bold text-zinc-100' : 'text-zinc-400'}>
                   {entry.name}:
                 </span>
               </div>
-              <span className="font-bold text-[var(--text-primary)]">
+              <span className="font-bold text-zinc-200">
                 {entry.value}
                 {unitSuffix}
               </span>
@@ -49,6 +47,10 @@ function BenchmarkTooltip({ active, payload, label, unitSuffix, frames, referenc
   return null;
 }
 
+/**
+ * BenchmarkAnalysisView (Tab 3: Benchmark Analytics)
+ * Monochromatic, border-free analytical view comparing hardware policies across workloads.
+ */
 export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -196,7 +198,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
     }
   };
 
-  // Empirical Takeaways dynamically computed from actual result data
+  // Empirical Takeaways dynamically computed
   const empiricalTakeaways = useMemo(() => {
     if (!data?.raw_results) return null;
     const raw = data.raw_results;
@@ -217,30 +219,27 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
       }
     }
 
-    const totalDirtyByAlgo = {
-      AdaptiveHybrid: 0,
-      FIFO: 0,
-      LRU: 0,
-      LFU: 0,
-    };
+    const totalDirtyByAlgo = {};
     raw.forEach((r) => {
-      if (totalDirtyByAlgo[r.algorithm] !== undefined) {
-        totalDirtyByAlgo[r.algorithm] += r.dirty_write_backs || 0;
-      }
+      totalDirtyByAlgo[r.algorithm] = (totalDirtyByAlgo[r.algorithm] || 0) + (r.dirty_write_backs || 0);
     });
 
-    const workloads = ['Sequential', 'Loop', 'Random', 'Zipf (Hot/Cold)'];
     const bestEatPerWorkload = {};
+    const workloads = [...new Set(raw.map((r) => r.workload))];
     workloads.forEach((w) => {
-      const rowsForWorkload = raw.filter((r) => r.workload === w);
-      if (rowsForWorkload.length > 0) {
-        let lowest = rowsForWorkload[0];
-        rowsForWorkload.forEach((r) => {
-          if (r.eat < lowest.eat) lowest = r;
-        });
+      const wRows = raw.filter((r) => r.workload === w);
+      let bestRow = null;
+      let minEat = Infinity;
+      wRows.forEach((r) => {
+        if ((r.eat || 0) < minEat) {
+          minEat = r.eat || 0;
+          bestRow = r;
+        }
+      });
+      if (bestRow) {
         bestEatPerWorkload[w] = {
-          algorithm: lowest.algorithm,
-          eatMs: (lowest.eat / 1e6).toFixed(2),
+          algorithm: bestRow.algorithm,
+          eatMs: (minEat / 1e6).toFixed(2),
         };
       }
     });
@@ -252,57 +251,64 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
     };
   }, [data, frames]);
 
-  // ROI: compute time saved vs worst algorithm
+  // 'Time Saved' ROI Widget
   const roiSummary = useMemo(() => {
     if (!data?.raw_results) return null;
     const raw = data.raw_results;
-    const hybridRows = raw.filter((r) => r.algorithm === 'AdaptiveHybrid');
-    const fifoRows = raw.filter((r) => r.algorithm === 'FIFO');
+    let hybridDirty = 0;
+    let fifoDirty = 0;
+    let hybridEatTotal = 0;
+    let fifoEatTotal = 0;
+    let workloadCount = 0;
 
-    const hybridDirty = hybridRows.reduce((acc, r) => acc + (r.dirty_write_backs || 0), 0);
-    const fifoDirty = fifoRows.reduce((acc, r) => acc + (r.dirty_write_backs || 0), 0);
+    raw.forEach((r) => {
+      if (r.algorithm === 'AdaptiveHybrid') {
+        hybridDirty += r.dirty_write_backs || 0;
+        hybridEatTotal += r.eat || 0;
+        workloadCount++;
+      } else if (r.algorithm === 'FIFO') {
+        fifoDirty += r.dirty_write_backs || 0;
+        fifoEatTotal += r.eat || 0;
+      }
+    });
+
     const savedWrites = Math.max(0, fifoDirty - hybridDirty);
-    const savedMs = savedWrites * 10;
+    const savedMs = (savedWrites * 10);
+    const eatDiffMs = workloadCount > 0 ? (((fifoEatTotal - hybridEatTotal) / workloadCount) / 1e6).toFixed(2) : '0';
 
-    const hybridEat = hybridRows.reduce((acc, r) => acc + (r.eat || 0), 0) / Math.max(1, hybridRows.length);
-    const fifoEat = fifoRows.reduce((acc, r) => acc + (r.eat || 0), 0) / Math.max(1, fifoRows.length);
-    const eatDiffMs = ((fifoEat - hybridEat) / 1e6).toFixed(3);
-
-    return { savedWrites, savedMs, hybridDirty, fifoDirty, eatDiffMs };
+    return {
+      savedWrites,
+      savedMs,
+      eatDiffMs,
+      fifoDirty,
+      hybridDirty,
+    };
   }, [data]);
 
   return (
-    <div className="space-y-4" aria-label="Operating systems benchmark matrix">
-      {/* Benchmark Controls & Parameters Header */}
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 sm:p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between pb-3.5 mb-3.5 border-b border-[var(--border-default)] gap-3">
+    <div className="space-y-3">
+      {/* Configuration & Controls */}
+      <div className="bg-[#111111] rounded-lg p-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 mb-3 border-b border-zinc-900 gap-3">
           <div>
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-primary)]">
-                <BarChart3 className="w-5 h-5" aria-hidden="true" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-[var(--text-primary)] tracking-tight font-sans">
-                  Comprehensive 4×4 Benchmark Matrix
-                </h2>
-                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                  Automated benchmark testing matrix across 4 reference distributions.
-                </p>
-              </div>
-            </div>
+            <h2 className="text-sm font-bold text-zinc-100 tracking-tight font-sans">
+              Benchmark Analytics
+            </h2>
+            <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
+              Empirical multi-workload comparison (Sequential, Loop, Zipf, Random)
+            </p>
           </div>
 
-          {/* Metric Selector Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-[var(--text-secondary)] mr-1 uppercase font-mono">Metric:</span>
-            <div className="flex items-center p-1 rounded-lg border border-[var(--border-default)] bg-[var(--bg-base)] text-xs">
+          <div className="flex items-center gap-2">
+            {/* Metric Mode Switcher */}
+            <div className="flex items-center p-0.5 bg-[#181818] rounded text-xs font-mono">
               <button
                 type="button"
                 onClick={() => setMetricMode('eat_ms')}
-                className={`px-3 py-1.5 rounded-md transition-all cursor-pointer font-bold ${
+                className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
                   metricMode === 'eat_ms'
-                    ? 'bg-[var(--text-primary)] text-[var(--bg-base)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    ? 'bg-zinc-700 text-zinc-100 font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 EAT (ms)
@@ -310,10 +316,10 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               <button
                 type="button"
                 onClick={() => setMetricMode('hit_ratio')}
-                className={`px-3 py-1.5 rounded-md transition-all cursor-pointer font-bold ${
+                className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
                   metricMode === 'hit_ratio'
-                    ? 'bg-[var(--text-primary)] text-[var(--bg-base)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    ? 'bg-zinc-700 text-zinc-100 font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 Hit Ratio %
@@ -321,10 +327,10 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               <button
                 type="button"
                 onClick={() => setMetricMode('dirty_writes')}
-                className={`px-3 py-1.5 rounded-md transition-all cursor-pointer font-bold ${
+                className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
                   metricMode === 'dirty_writes'
-                    ? 'bg-[var(--text-primary)] text-[var(--bg-base)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    ? 'bg-zinc-700 text-zinc-100 font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 Dirty Writes
@@ -335,104 +341,110 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               type="button"
               onClick={fetchBenchmark}
               disabled={isLoading}
-              className="btn-secondary p-2 rounded-lg cursor-pointer disabled:opacity-40"
+              className="p-1.5 rounded bg-[#181818] hover:bg-[#202020] text-zinc-400 hover:text-zinc-200 cursor-pointer disabled:opacity-40 transition-colors"
               title="Re-run benchmark matrix"
               aria-label="Re-run benchmark matrix"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
 
         {/* Param Bar */}
-        <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-[var(--text-secondary)]">
+        <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-zinc-400">
           <div className="flex items-center gap-1.5">
-            <label htmlFor="bench-frames" className="text-[var(--text-primary)] font-bold">Frames:</label>
+            <label htmlFor="bench-frames" className="text-zinc-500">Frames:</label>
             <select
               id="bench-frames"
               value={frames}
               onChange={(e) => setFrames(Number(e.target.value))}
-              className="bg-[var(--bg-base)] border border-[var(--border-default)] rounded px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:border-[var(--border-focus)]"
+              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
             >
               {[6, 8, 10, 12, 16, 20].map((f) => (
                 <option key={f} value={f}>{f} frames</option>
               ))}
             </select>
           </div>
-          <span className="text-[var(--text-tertiary)]">&bull;</span>
+
+          <span className="text-zinc-700">·</span>
+
           <div className="flex items-center gap-1.5">
-            <label htmlFor="bench-refs" className="text-[var(--text-primary)] font-bold">Trace Length:</label>
+            <label htmlFor="bench-refs" className="text-zinc-500">Refs:</label>
             <select
               id="bench-refs"
               value={references}
               onChange={(e) => setReferences(Number(e.target.value))}
-              className="bg-[var(--bg-base)] border border-[var(--border-default)] rounded px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:border-[var(--border-focus)]"
+              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
             >
               {[200, 500, 1000, 2000].map((r) => (
                 <option key={r} value={r}>{r} refs</option>
               ))}
             </select>
           </div>
-          <span className="text-[var(--text-tertiary)]">&bull;</span>
+
+          <span className="text-zinc-700">·</span>
+
           <div className="flex items-center gap-1.5">
-            <label htmlFor="bench-writes" className="text-[var(--text-primary)] font-bold">Write Ratio:</label>
+            <label htmlFor="bench-writes" className="text-zinc-500">Writes:</label>
             <select
               id="bench-writes"
               value={writeProb}
               onChange={(e) => setWriteProb(Number(e.target.value))}
-              className="bg-[var(--bg-base)] border border-[var(--border-default)] rounded px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:border-[var(--border-focus)]"
+              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
             >
               {[0.1, 0.2, 0.3, 0.5].map((w) => (
                 <option key={w} value={w}>{(w * 100).toFixed(0)}% writes</option>
               ))}
             </select>
           </div>
-          <span className="text-[var(--text-tertiary)]">&bull;</span>
+
+          <span className="text-zinc-700">·</span>
+
           <div className="flex items-center gap-1.5">
-            <label htmlFor="bench-seed" className="text-[var(--text-primary)] font-bold">Seed:</label>
+            <label htmlFor="bench-seed" className="text-zinc-500">Seed:</label>
             <input
               id="bench-seed"
               type="number"
               value={seed}
               onChange={(e) => setSeed(Number(e.target.value))}
-              className="w-16 bg-[var(--bg-base)] border border-[var(--border-default)] rounded px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:border-[var(--border-focus)]"
+              className="w-16 bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
             />
           </div>
         </div>
       </div>
 
       {/* Chart Canvas */}
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 sm:p-5">
-        <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] mb-4 font-sans">
-          <span className="font-bold text-[var(--text-primary)] text-sm">{getMetricTitle()}</span>
-          <span className="font-mono text-xs bg-[var(--bg-base)] px-2.5 py-1 rounded border border-[var(--border-default)] text-[var(--text-secondary)]">
-            Hardware: RAM 100ns &bull; Fault Read 10ms &bull; Dirty Write 10ms
+      <div className="bg-[#111111] rounded-lg p-4">
+        <div className="flex items-center justify-between text-xs text-zinc-400 mb-3 font-mono">
+          <span className="font-semibold text-zinc-200 text-xs font-sans">{getMetricTitle()}</span>
+          <span className="text-[10px] text-zinc-500">
+            RAM 100ns · Read 10ms · Write 10ms
           </span>
         </div>
 
         {error ? (
-          <div className="h-72 flex items-center justify-center border border-rose-900/50 bg-rose-950/20 rounded-xl text-rose-300 gap-2 text-xs font-mono">
-            <AlertCircle className="w-5 h-5 text-rose-400" />
+          <div className="h-64 flex items-center justify-center bg-rose-950/20 rounded-lg text-rose-300 gap-2 text-xs font-mono">
+            <AlertCircle className="w-4 h-4 text-rose-400" />
             <span>{error}</span>
           </div>
         ) : isLoading && !data ? (
-          <div className="h-72 flex flex-col items-center justify-center border border-[var(--border-default)] bg-[var(--bg-base)] rounded-xl text-[var(--text-secondary)] gap-3 text-xs font-sans">
-            <RefreshCw className="w-6 h-6 animate-spin text-[var(--text-primary)]" />
-            <span className="font-bold text-[var(--text-primary)]">Executing automated 16-run testing matrix...</span>
+          <div className="h-64 flex flex-col items-center justify-center bg-[#161616] rounded-lg text-zinc-400 gap-2 text-xs font-mono">
+            <RefreshCw className="w-5 h-5 animate-spin text-zinc-300" />
+            <span>Executing automated benchmark matrix...</span>
           </div>
         ) : (
-          <div className="h-80 w-full pt-2">
+          <div className="h-72 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 15, left: -5, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" strokeOpacity={0.6} vertical={false} />
+              <BarChart data={chartData} margin={{ top: 10, right: 15, left: -5, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
                 <XAxis
                   dataKey="workload"
-                  stroke="var(--border-default)"
-                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontFamily: 'Inter, sans-serif' }}
+                  stroke="#444"
+                  tick={{ fill: '#888', fontSize: 11, fontFamily: 'monospace' }}
                 />
                 <YAxis
-                  stroke="var(--border-default)"
-                  tick={{ fill: 'var(--text-secondary)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}
+                  stroke="#444"
+                  tick={{ fill: '#888', fontSize: 10, fontFamily: 'monospace' }}
                   unit={metricMode === 'hit_ratio' ? '%' : ''}
                 />
                 <Tooltip
@@ -445,153 +457,69 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
                   }
                 />
                 <Legend
-                  wrapperStyle={{ paddingTop: '12px', fontSize: '12px', fontFamily: 'Inter, sans-serif' }}
+                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px', fontFamily: 'monospace' }}
                 />
-                <Bar dataKey="FIFO" fill="#D97706" radius={[2, 2, 0, 0]} name="FIFO" />
-                <Bar dataKey="LRU" fill="#71717A" radius={[2, 2, 0, 0]} name="LRU" />
-                <Bar dataKey="LFU" fill="#9333EA" radius={[2, 2, 0, 0]} name="LFU" />
-                <Bar dataKey="AdaptiveHybrid" fill="#0D9488" radius={[2, 2, 0, 0]} name="AdaptiveHybrid" />
+                <Bar dataKey="FIFO" fill="#71717A" radius={[2, 2, 0, 0]} name="FIFO" />
+                <Bar dataKey="LFU" fill="#A1A1AA" radius={[2, 2, 0, 0]} name="LFU" />
+                <Bar dataKey="LRU" fill="#D4D4D8" radius={[2, 2, 0, 0]} name="LRU" />
+                <Bar dataKey="AdaptiveHybrid" fill="#FAFAFA" radius={[2, 2, 0, 0]} name="AdaptiveHybrid" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
       </div>
 
-      {/* Data-Derived Empirical Observations */}
-      {empiricalTakeaways && (
-        <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 sm:p-5">
-          <div className="flex items-center gap-2 pb-2.5 mb-3 border-b border-[var(--border-default)]">
-            <Activity className="w-4 h-4 text-[var(--text-secondary)]" aria-hidden="true" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] font-mono">
-              Data-Derived Analytical Observations
-            </h3>
-            <span className="text-[10px] font-mono text-[var(--text-secondary)] bg-[var(--bg-base)] px-2 py-0.5 rounded border border-[var(--border-default)]">
-              Derived from live run
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
-            <div className="p-3.5 rounded-xl bg-[var(--bg-base)] border border-[var(--border-default)] flex flex-col justify-between">
-              <div>
-                <span className="font-bold text-[var(--text-primary)] block mb-1 font-sans">
-                  Cyclic Loop Behavior
-                </span>
-                <p className="text-[var(--text-secondary)] text-[11px] leading-relaxed font-sans">
-                  {empiricalTakeaways.loopText || 'Evaluating cyclic reference behavior across algorithms.'}
-                </p>
-              </div>
-              <div className="mt-2 text-[10px] text-teal-400 font-mono pt-2 border-t border-[var(--border-subtle)]">
-                LRFU frequency weighting preserves core pages
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-[var(--bg-base)] border border-[var(--border-default)] flex flex-col justify-between">
-              <div>
-                <span className="font-bold text-[var(--text-primary)] block mb-1 font-sans">
-                  Total Disk Write-Backs Incurred
-                </span>
-                <div className="font-mono text-xs space-y-1 my-2">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text-secondary)]">AdaptiveHybrid:</span>
-                    <strong className="text-teal-400 font-bold">
-                      {empiricalTakeaways.totalDirtyByAlgo.AdaptiveHybrid} writes
-                    </strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text-secondary)]">LRU:</span>
-                    <strong className="text-[var(--text-primary)]">
-                      {empiricalTakeaways.totalDirtyByAlgo.LRU} writes
-                    </strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text-secondary)]">FIFO:</span>
-                    <strong className="text-[var(--text-primary)]">
-                      {empiricalTakeaways.totalDirtyByAlgo.FIFO} writes
-                    </strong>
-                  </div>
-                </div>
-              </div>
-              <div className="text-[10px] text-amber-400 font-mono pt-2 border-t border-[var(--border-subtle)]">
-                +δ cost penalty avoids dirty frame evictions
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-[var(--bg-base)] border border-[var(--border-default)] flex flex-col justify-between">
-              <div>
-                <span className="font-bold text-[var(--text-primary)] block mb-1 font-sans">
-                  Lowest Hardware EAT by Workload
-                </span>
-                <div className="font-mono text-[11px] space-y-1 my-2">
-                  {Object.entries(empiricalTakeaways.bestEatPerWorkload).map(([w, info]) => (
-                    <div key={w} className="flex justify-between">
-                      <span className="text-[var(--text-secondary)] truncate max-w-[120px]">{w}:</span>
-                      <strong className="text-[var(--text-primary)]">
-                        {info.algorithm} ({info.eatMs}ms)
-                      </strong>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="text-[10px] text-[var(--text-tertiary)] font-mono pt-2 border-t border-[var(--border-subtle)]">
-                Incorporates 100ns RAM, 10ms read & write latencies
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ROI Widget */}
+      {/* 'Time Saved' ROI Widget */}
       {roiSummary && (
-        <div className="bg-[var(--bg-surface)] border border-teal-600/40 rounded-xl p-4 sm:p-5">
-          <div className="flex items-center gap-2 pb-2.5 mb-3 border-b border-[var(--border-subtle)]">
-            <TrendingDown className="w-4 h-4 text-teal-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] font-mono">
-              Time Saved ROI Widget
-            </h3>
-            <span className="text-[10px] font-mono text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-2 py-0.5 rounded border border-[var(--border-default)]">
+        <div className="bg-[#111111] rounded-lg p-4">
+          <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-900 text-xs font-mono">
+            <div className="flex items-center gap-2">
+              <TrendingDown className="w-4 h-4 text-zinc-300" />
+              <span className="font-semibold text-zinc-200">
+                Time Saved ROI Summary
+              </span>
+            </div>
+            <span className="text-[10px] text-zinc-500">
               AdaptiveHybrid vs FIFO
             </span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-3 rounded-xl bg-[#041A14] border border-teal-600/40 text-center">
-              <div className="text-2xl font-black font-mono text-teal-400">{roiSummary.savedWrites}</div>
-              <div className="text-xs font-mono text-[var(--text-secondary)] mt-1">Disk write-backs prevented</div>
-              <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">vs FIFO ({roiSummary.fifoDirty} writes)</div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="p-3 rounded-md bg-[#161616] text-center">
+              <div className="text-xl font-bold font-mono text-zinc-100">{roiSummary.savedWrites}</div>
+              <div className="text-[11px] font-mono text-zinc-400 mt-0.5">Disk write-backs prevented</div>
+              <div className="text-[10px] text-zinc-600 mt-0.5">vs FIFO ({roiSummary.fifoDirty} writes)</div>
             </div>
-            <div className="p-3 rounded-xl bg-[#041A14] border border-teal-600/40 text-center">
-              <div className="text-2xl font-black font-mono text-teal-400">{roiSummary.savedMs}ms</div>
-              <div className="text-xs font-mono text-[var(--text-secondary)] mt-1">I/O blocking time prevented</div>
-              <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{roiSummary.savedWrites} × 10ms/write</div>
+            <div className="p-3 rounded-md bg-[#161616] text-center">
+              <div className="text-xl font-bold font-mono text-zinc-100">{roiSummary.savedMs}ms</div>
+              <div className="text-[11px] font-mono text-zinc-400 mt-0.5">I/O blocking time prevented</div>
+              <div className="text-[10px] text-zinc-600 mt-0.5">{roiSummary.savedWrites} × 10ms / flush</div>
             </div>
-            <div className="p-3 rounded-xl bg-[#041A14] border border-teal-600/40 text-center">
-              <div className="text-2xl font-black font-mono text-teal-400">{roiSummary.eatDiffMs}ms</div>
-              <div className="text-xs font-mono text-[var(--text-secondary)] mt-1">avg EAT improvement</div>
-              <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">per workload run</div>
+            <div className="p-3 rounded-md bg-[#161616] text-center">
+              <div className="text-xl font-bold font-mono text-zinc-100">{roiSummary.eatDiffMs}ms</div>
+              <div className="text-[11px] font-mono text-zinc-400 mt-0.5">Average EAT improvement</div>
+              <div className="text-[10px] text-zinc-600 mt-0.5">per workload run</div>
             </div>
           </div>
-          <p className="text-xs text-[var(--text-secondary)] font-mono mt-3 leading-relaxed">
+
+          <p className="text-[11px] text-zinc-500 font-mono mt-2.5 leading-relaxed">
             AdaptiveHybrid saved {roiSummary.savedWrites} disk write-backs, preventing ~{roiSummary.savedMs}ms of I/O blocking compared to FIFO.
-            The C(p) dirty-cost penalty actively avoids unnecessary disk flushes.
           </p>
         </div>
       )}
 
       {/* Complete Empirical Data Table */}
       {data?.raw_results && (
-        <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 sm:p-5 overflow-hidden">
-          <div className="flex items-center justify-between pb-2.5 mb-3.5 border-b border-[var(--border-default)]">
-            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] font-mono">
-              Complete Empirical Results Matrix
+        <div className="bg-[#111111] rounded-lg p-4 overflow-hidden">
+          <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-900">
+            <span className="text-xs font-semibold text-zinc-200 font-mono">
+              Empirical Results Matrix
             </span>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono text-[var(--text-secondary)]">
-                16 Benchmark Iterations
-              </span>
-              {/* Export Controls */}
               <button
                 type="button"
                 onClick={exportCSV}
-                className="btn-secondary px-2.5 py-1 rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
+                className="px-2.5 py-1 rounded bg-[#181818] hover:bg-[#202020] text-zinc-300 text-[11px] font-mono flex items-center gap-1.5 cursor-pointer transition-colors"
                 title="Export to CSV"
               >
                 <Download className="w-3 h-3" />
@@ -600,7 +528,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               <button
                 type="button"
                 onClick={exportPDF}
-                className="btn-secondary px-2.5 py-1 rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
+                className="px-2.5 py-1 rounded bg-[#181818] hover:bg-[#202020] text-zinc-300 text-[11px] font-mono flex items-center gap-1.5 cursor-pointer transition-colors"
                 title="Export to PDF"
               >
                 <FileText className="w-3 h-3" />
@@ -612,45 +540,35 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs font-mono">
               <thead>
-                <tr className="border-b border-[var(--border-default)] text-[var(--text-secondary)] text-[11px] bg-[var(--bg-base)]">
-                  <th className="py-2.5 px-3 font-semibold">Workload</th>
-                  <th className="py-2.5 px-3 font-semibold">Algorithm</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Hit Ratio</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Page Faults</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Dirty Writes</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Effective Access Time</th>
+                <tr className="text-zinc-500 text-[10px] uppercase border-b border-zinc-900">
+                  <th className="py-2 px-2.5 font-medium">Workload</th>
+                  <th className="py-2 px-2.5 font-medium">Algorithm</th>
+                  <th className="py-2 px-2.5 font-medium text-right">Hit Ratio</th>
+                  <th className="py-2 px-2.5 font-medium text-right">Faults</th>
+                  <th className="py-2 px-2.5 font-medium text-right">Dirty Writes</th>
+                  <th className="py-2 px-2.5 font-medium text-right">EAT</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--border-subtle)]">
+              <tbody className="divide-y divide-zinc-900/60">
                 {data.raw_results.map((row, idx) => (
                   <tr
                     key={idx}
-                    className={`hover:bg-[var(--bg-elevated)] transition-colors ${
-                      row.algorithm === 'AdaptiveHybrid' ? 'bg-[#021812]/40 font-bold' : ''
+                    className={`hover:bg-[#161616] transition-colors ${
+                      row.algorithm === 'AdaptiveHybrid' ? 'text-zinc-100 font-semibold' : 'text-zinc-400'
                     }`}
                   >
-                    <td className="py-2.5 px-3 text-[var(--text-primary)]">{row.workload}</td>
-                    <td className="py-2.5 px-3">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                          row.algorithm === 'AdaptiveHybrid'
-                            ? 'bg-[#021812] text-teal-300 border border-teal-600'
-                            : row.algorithm === 'LRU'
-                            ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-default)]'
-                            : row.algorithm === 'LFU'
-                            ? 'bg-[#16051E] text-purple-300 border border-purple-700'
-                            : 'bg-[#180F02] text-amber-300 border border-amber-700'
-                        }`}
-                      >
+                    <td className="py-2 px-2.5">{row.workload}</td>
+                    <td className="py-2 px-2.5">
+                      <span className="text-[11px]">
                         {row.algorithm}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-[var(--text-primary)]">
+                    <td className="py-2 px-2.5 text-right font-mono">
                       {(row.hit_ratio * 100).toFixed(1)}%
                     </td>
-                    <td className="py-2.5 px-3 text-right text-rose-400 font-semibold">{row.page_faults}</td>
-                    <td className="py-2.5 px-3 text-right text-amber-400 font-semibold">{row.dirty_write_backs}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-[var(--text-primary)]">
+                    <td className="py-2 px-2.5 text-right font-mono text-rose-400/90">{row.page_faults}</td>
+                    <td className="py-2 px-2.5 text-right font-mono text-amber-400/90">{row.dirty_write_backs}</td>
+                    <td className="py-2 px-2.5 text-right font-mono">
                       {((row.eat || 0) / 1e6).toFixed(2)} ms
                     </td>
                   </tr>

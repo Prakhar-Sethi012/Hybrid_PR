@@ -15,50 +15,50 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="shortcuts-title"
     >
-      <div className="bg-[#0A0A0A] border border-[#222222] rounded-xl shadow-2xl w-full max-w-md p-5 text-white animate-modal-enter">
-        <div className="flex items-center justify-between pb-3 border-b border-[#222222] mb-4">
+      <div className="bg-[#111111] rounded-xl shadow-2xl w-full max-w-md p-5 text-white animate-modal-enter">
+        <div className="flex items-center justify-between pb-3 border-b border-zinc-900 mb-3">
           <div className="flex items-center gap-2">
-            <Keyboard className="w-5 h-5 text-zinc-400" aria-hidden="true" />
-            <h3 id="shortcuts-title" className="text-sm font-bold font-sans text-white">
-              Observatory Keyboard Shortcuts
+            <Keyboard className="w-4 h-4 text-zinc-400" aria-hidden="true" />
+            <h3 id="shortcuts-title" className="text-sm font-bold font-sans text-zinc-100">
+              Keyboard Shortcuts
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded text-zinc-400 hover:text-white hover:bg-[#141414] transition-colors cursor-pointer"
+            className="p-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
             aria-label="Close dialog"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="space-y-2.5 font-sans text-xs">
+        <div className="space-y-1.5 font-sans text-xs">
           {shortcuts.map((s, idx) => (
             <div
               key={idx}
-              className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#000000] border border-[#222222]"
+              className="flex items-center justify-between py-2 px-3 rounded-md bg-[#161616]"
             >
               <span className="text-zinc-300">{s.desc}</span>
-              <kbd className="px-2 py-0.5 rounded bg-[#141414] border border-[#2E2E2E] font-mono font-semibold text-white text-[11px] shadow-sm">
+              <kbd className="px-2 py-0.5 rounded bg-[#202020] font-mono text-zinc-100 text-[11px]">
                 {s.key}
               </kbd>
             </div>
           ))}
         </div>
 
-        <div className="mt-5 pt-3 border-t border-[#222222] text-right">
+        <div className="mt-4 pt-3 border-t border-zinc-900 text-right">
           <button
             type="button"
             onClick={onClose}
-            className="btn-primary px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
+            className="px-4 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold cursor-pointer transition-colors"
           >
-            Got it
+            Close
           </button>
         </div>
       </div>

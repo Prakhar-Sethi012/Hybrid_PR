@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react';
-import { Terminal, Flame } from 'lucide-react';
 
 // Inline tooltip for "Calculated C(p)" phrases
 function InlineTooltip({ children, cpBreakdown }) {
@@ -31,50 +30,43 @@ function InlineTooltip({ children, cpBreakdown }) {
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <span className="tooltip-trigger text-teal-300 font-bold cursor-help underline decoration-teal-500/50 underline-offset-2">
+      <span className="text-zinc-200 font-semibold cursor-help underline decoration-zinc-500/50 underline-offset-2 hover:text-white">
         {children}
       </span>
 
       {show && (
-        <span className="absolute bottom-full left-0 mb-2 z-50 animate-tooltip-in pointer-events-none w-72">
-          <span className="block bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-xl p-3 shadow-2xl text-[11px] font-mono">
-            <span className="block font-bold text-[var(--text-primary)] pb-1.5 mb-1.5 border-b border-[var(--border-subtle)]">
+        <span className="absolute bottom-full left-0 mb-2 z-50 animate-tooltip-in pointer-events-none w-64 block">
+          <span className="block bg-[#161616] rounded-lg p-2.5 shadow-2xl text-[11px] font-mono text-zinc-300">
+            <span className="block font-bold text-zinc-100 pb-1 mb-1 border-b border-zinc-800">
               C(p) Eviction Cost Math
             </span>
 
             {/* Exact requested format: [0.85 (Score) + 2.0 (Dirty Penalty)] */}
-            <span className="block bg-[var(--bg-base)] px-2.5 py-1.5 rounded border border-[var(--border-default)] font-bold text-teal-300 text-xs mb-2 text-center">
+            <span className="block bg-[#111111] px-2 py-1 rounded font-bold text-zinc-200 text-xs mb-1.5 text-center">
               [{scoreStr} (Score) + {penaltyStr} (Dirty Penalty)] = {totalStr}
             </span>
 
-            <span className="block space-y-1">
+            <span className="block space-y-0.5 text-[10px]">
               <span className="flex justify-between">
-                <span className="text-[var(--text-secondary)]">S(p) Decayed Score</span>
-                <span className="font-bold text-[var(--text-primary)]">{Number(effective.score).toFixed(4)}</span>
+                <span className="text-zinc-500">S(p) Decayed Score</span>
+                <span className="text-zinc-200 font-medium">{Number(effective.score).toFixed(4)}</span>
               </span>
               <span className="flex justify-between">
-                <span className={effective.dirty_penalty > 0 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}>
-                  δ Dirty Page Penalty
+                <span className={effective.dirty_penalty > 0 ? 'text-amber-400' : 'text-zinc-500'}>
+                  δ Dirty Penalty
                 </span>
-                <span className={`font-bold ${effective.dirty_penalty > 0 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}`}>
+                <span className={effective.dirty_penalty > 0 ? 'text-amber-400 font-medium' : 'text-zinc-500'}>
                   +{Number(effective.dirty_penalty).toFixed(1)}
                 </span>
               </span>
-              <span className="flex justify-between pt-1 border-t border-[var(--border-subtle)]">
-                <span className="text-[var(--text-primary)] font-bold">Final C(p) Cost</span>
-                <span className="font-black text-[var(--text-primary)]">{totalStr}</span>
+              <span className="flex justify-between pt-0.5 border-t border-zinc-800">
+                <span className="text-zinc-200 font-bold">Total C(p)</span>
+                <span className="font-bold text-zinc-100">{totalStr}</span>
               </span>
-              <span className="flex justify-between">
-                <span className="text-[var(--text-tertiary)]">λ Recency Dial</span>
-                <span className="font-bold text-teal-400">{Number(effective.lambda ?? 0.5).toFixed(2)}</span>
-              </span>
-            </span>
-            <span className="block mt-2 text-[9px] text-[var(--text-tertiary)] leading-tight">
-              Victim frame had the lowest C(p) in physical memory.
             </span>
           </span>
-          <span className="flex justify-start pl-6">
-            <span className="w-2 h-2 bg-[var(--bg-surface)] border-r border-b border-[var(--border-strong)] rotate-45 -mt-1 inline-block" />
+          <span className="flex justify-start pl-4">
+            <span className="w-1.5 h-1.5 bg-[#161616] rotate-45 -mt-0.5 inline-block" />
           </span>
         </span>
       )}
@@ -86,7 +78,6 @@ function InlineTooltip({ children, cpBreakdown }) {
 function RenderDecisionLog({ text, cpBreakdown }) {
   if (!text) return null;
 
-  // Split on "Calculated C(p)" (case-sensitive)
   const marker = 'Calculated C(p)';
   const idx = text.indexOf(marker);
 
@@ -112,100 +103,55 @@ export default function DecisionNarrative({ currentStep, algorithm = 'AdaptiveHy
   const cpBreakdown = currentStep.cp_breakdown || null;
 
   return (
-    <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 mb-4">
-      {/* Terminal Title Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-3 border-b border-[var(--border-default)]">
+    <div className="bg-[#111111] rounded-lg p-4 mb-3">
+      {/* Title Line — Minimalist */}
+      <div className="flex items-center justify-between text-xs font-mono text-zinc-500 mb-2">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 mr-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
-          </div>
-          <Terminal className="w-4 h-4 text-[var(--text-secondary)]" aria-hidden="true" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] font-mono">
-            Algorithm Reasoning Log
-          </h3>
-          <span className="text-[var(--text-tertiary)]">•</span>
-          <span className="text-xs text-[var(--text-secondary)] font-mono">
-            Tick <strong className="text-[var(--text-primary)]">#{currentStep.step_id}</strong>
-          </span>
+          <span className="font-semibold text-zinc-300">Decision Narrative</span>
+          <span>·</span>
+          <span>Tick #{currentStep.step_id}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--border-default)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
-            Live Dispatch
-          </span>
-          <span className="text-xs font-mono px-2 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border-default)]">
-            Policy: <strong className="text-[var(--text-primary)]">{algorithm}</strong>
-          </span>
-        </div>
+        <span className="text-[10px] text-zinc-500">
+          Policy: {algorithm}
+        </span>
       </div>
 
       {/* Main Terminal Output — interactive C(p) */}
-      <div className="bg-[var(--bg-base)] border border-[var(--border-default)] rounded-lg p-3.5">
-        <div className="flex items-start gap-2.5">
-          <span className="text-emerald-400 font-mono text-xs select-none">&gt;</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-emerald-300 font-mono leading-relaxed whitespace-pre-wrap">
-              <RenderDecisionLog
-                text={currentStep.decision_log || 'Trace step executed. No detailed telemetry log recorded.'}
-                cpBreakdown={algorithm === 'AdaptiveHybrid' ? cpBreakdown : null}
-              />
-            </p>
-          </div>
-        </div>
+      <div className="bg-[#161616] rounded-md p-3 text-xs font-mono text-zinc-300 leading-relaxed">
+        <RenderDecisionLog
+          text={currentStep.decision_log || 'Trace step executed.'}
+          cpBreakdown={algorithm === 'AdaptiveHybrid' ? cpBreakdown : null}
+        />
       </div>
 
-      {/* Real-Time Callout Indicators */}
-      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
-        <div className="p-2.5 rounded-lg bg-[var(--bg-base)] border border-[var(--border-default)] flex items-center justify-between">
-          <span className="text-[11px] text-[var(--text-secondary)] uppercase">Target Frame</span>
-          <strong className="text-[var(--text-primary)] text-sm font-bold">Frame #{currentStep.frame_id ?? 0}</strong>
+      {/* Sleek inline telemetry tags */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[11px] font-mono text-zinc-500">
+        <div>
+          <span>Target: </span>
+          <strong className="text-zinc-200">Frame #{currentStep.frame_id ?? 0}</strong>
         </div>
-
-        <div className="p-2.5 rounded-lg bg-[var(--bg-base)] border border-[var(--border-default)] flex items-center justify-between">
-          <span className="text-[11px] text-[var(--text-secondary)] uppercase">Victim Selection</span>
+        <span>·</span>
+        <div>
+          <span>Victim: </span>
           {currentStep.action === 'HIT' ? (
-            <span className="text-emerald-400 font-semibold">None (Cache Hit)</span>
+            <span className="text-zinc-400">None (Cache Hit)</span>
           ) : hasEviction ? (
-            <span className="text-amber-400 font-bold">Evicted P{currentStep.evicted_page}</span>
+            <span className="text-zinc-200 font-semibold">Evicted Page {currentStep.evicted_page}</span>
           ) : (
-            <span className="text-emerald-400 font-semibold">Free Slot Filled</span>
+            <span className="text-zinc-400">Free Slot</span>
           )}
         </div>
-
-        <div className="p-2.5 rounded-lg bg-[var(--bg-base)] border border-[var(--border-default)] flex items-center justify-between">
-          <span className="text-[11px] text-[var(--text-secondary)] uppercase">Dirty Flush Penalty</span>
+        <span>·</span>
+        <div>
+          <span>Write Penalty: </span>
           {isDirtyWriteBack ? (
-            <span className="text-rose-400 font-bold flex items-center gap-1">
-              <Flame className="w-3.5 h-3.5 text-amber-500 animate-flame-flicker" />
-              +δ Incurred (10ms)
-            </span>
+            <span className="text-amber-400 font-semibold">+10ms Dirty Flush</span>
           ) : (
-            <span className="text-[var(--text-tertiary)]">0ms Instant</span>
+            <span className="text-zinc-400">0ms (Clean)</span>
           )}
         </div>
       </div>
-
-      {/* C(p) Breakdown Callout (when available and relevant) */}
-      {cpBreakdown && algorithm === 'AdaptiveHybrid' && (
-        <div className="mt-2 p-2.5 rounded-lg bg-[#0A1F1A] border border-teal-600/40 text-[11px] font-mono flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5 text-teal-400">
-            <span className="font-bold uppercase text-[10px] tracking-wider">C(p) breakdown:</span>
-            <span className="text-[var(--text-primary)]">{cpBreakdown.score.toFixed(4)} S(p)</span>
-            <span className="text-teal-600">+</span>
-            <span className={cpBreakdown.dirty_penalty > 0 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'}>
-              {cpBreakdown.dirty_penalty.toFixed(1)} δ
-            </span>
-            <span className="text-teal-600">=</span>
-            <span className="font-black text-[var(--text-primary)]">{cpBreakdown.total_cost.toFixed(4)}</span>
-          </div>
-          <span className="text-[var(--text-tertiary)] text-[10px]">
-            Hover "Calculated C(p)" in the log to see the math ↑
-          </span>
-        </div>
-      )}
     </div>
   );
 }

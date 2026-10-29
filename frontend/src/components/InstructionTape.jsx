@@ -1,22 +1,21 @@
 import React, { useEffect, useRef } from 'react';
 
 /**
- * InstructionTape — horizontal scrolling ticker showing the reference string.
- * Past references: dimmed
- * Current target: bold, highlighted
- * Upcoming: normal opacity
+ * InstructionTape — Minimalist, unboxed horizontal reference string ticker.
+ * Blends seamlessly above the RAM frames with zero heavy borders or containers.
+ * Past: dimmed | Current: bold white highlight | Upcoming: normal muted
  */
 export default function InstructionTape({ referenceString = [], currentIndex = 0, executionTrace = [] }) {
   const tapeRef = useRef(null);
   const activeRef = useRef(null);
 
-  // Build write-map from execution trace for coloring
+  // Build write-map from execution trace
   const writeMap = {};
   executionTrace.forEach((step, idx) => {
     if (step.is_write) writeMap[idx] = true;
   });
 
-  // Auto-scroll active item into view
+  // Auto-scroll active item into view smoothly
   useEffect(() => {
     if (activeRef.current && tapeRef.current) {
       activeRef.current.scrollIntoView({
@@ -29,27 +28,27 @@ export default function InstructionTape({ referenceString = [], currentIndex = 0
 
   if (!referenceString || referenceString.length === 0) {
     return (
-      <div className="h-10 flex items-center justify-center text-xs text-[var(--text-tertiary)] font-mono border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-surface)]">
-        No reference string loaded
+      <div className="py-2 text-[11px] text-zinc-600 font-mono">
+        No reference stream loaded
       </div>
     );
   }
 
-  // Show a window of ±30 items for performance
-  const windowPad = 30;
+  // Show a window of ±25 items for smooth scrolling
+  const windowPad = 25;
   const start = Math.max(0, currentIndex - windowPad);
   const end = Math.min(referenceString.length - 1, currentIndex + windowPad);
 
   return (
     <div
       ref={tapeRef}
-      className="instruction-tape flex items-center gap-1.5 py-2 px-3 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl overflow-x-auto"
+      className="instruction-tape flex items-center gap-1.5 py-1.5 overflow-x-auto no-scrollbar select-none"
       aria-label="Memory reference string instruction tape"
     >
-      {/* Left fade indicator */}
+      {/* Left indicator */}
       {start > 0 && (
-        <span className="text-[10px] font-mono text-[var(--text-tertiary)] flex-shrink-0 select-none">
-          ···{start}
+        <span className="text-[10px] font-mono text-zinc-600 flex-shrink-0">
+          ···
         </span>
       )}
 
@@ -59,19 +58,14 @@ export default function InstructionTape({ referenceString = [], currentIndex = 0
         const isPast = absIdx < currentIndex;
         const isWrite = writeMap[absIdx];
 
-        let itemClass =
-          'flex-shrink-0 flex flex-col items-center justify-center rounded-md px-2 py-1 text-[11px] font-mono transition-all duration-100 border ';
+        let itemClass = 'flex-shrink-0 px-2 py-0.5 rounded text-[11px] font-mono transition-all flex items-center gap-1 ';
 
         if (isCurrent) {
-          itemClass += isWrite
-            ? 'bg-[#211100] border-amber-500 text-amber-200 font-black scale-110 shadow-lg ring-1 ring-amber-400 animate-tape-slide'
-            : 'bg-[var(--bg-elevated)] border-[var(--text-primary)] text-[var(--text-primary)] font-black scale-110 shadow-lg ring-1 ring-[var(--text-primary)] animate-tape-slide';
+          itemClass += 'bg-zinc-800 text-white font-bold shadow-sm';
         } else if (isPast) {
-          itemClass += 'bg-transparent border-transparent text-[var(--text-tertiary)] opacity-40';
+          itemClass += 'text-zinc-600 opacity-40';
         } else {
-          itemClass += isWrite
-            ? 'bg-[#120B02] border-[var(--border-subtle)] text-amber-400/70'
-            : 'bg-transparent border-[var(--border-subtle)] text-[var(--text-secondary)]';
+          itemClass += 'text-zinc-400 hover:text-zinc-200';
         }
 
         return (
@@ -79,22 +73,22 @@ export default function InstructionTape({ referenceString = [], currentIndex = 0
             key={absIdx}
             ref={isCurrent ? activeRef : null}
             className={itemClass}
-            title={`Index ${absIdx}: Page ${page}${isWrite ? ' (WRITE)' : ' (READ)'}`}
+            title={`Step ${absIdx + 1}: Page ${page}${isWrite ? ' (Write)' : ' (Read)'}`}
           >
-            <span className="leading-none">P{String(page).padStart(2, '0')}</span>
-            {isCurrent && (
-              <span className="text-[8px] leading-none mt-0.5 uppercase tracking-wider opacity-80">
-                {isWrite ? 'WR' : 'RD'}
+            <span>P{String(page).padStart(2, '0')}</span>
+            {isWrite && (
+              <span className={`text-[9px] ${isCurrent ? 'text-amber-400' : 'text-zinc-500'}`}>
+                w
               </span>
             )}
           </div>
         );
       })}
 
-      {/* Right fade indicator */}
+      {/* Right indicator */}
       {end < referenceString.length - 1 && (
-        <span className="text-[10px] font-mono text-[var(--text-tertiary)] flex-shrink-0 select-none">
-          ···{referenceString.length - end - 1}
+        <span className="text-[10px] font-mono text-zinc-600 flex-shrink-0">
+          ···
         </span>
       )}
     </div>

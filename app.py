@@ -179,23 +179,8 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
         # 3. Execute the trace
         access_results = engine.execute_trace(proc, trace)
 
-        # 4. Serialize physical memory frames state
-        frames_state = []
-        for i in range(mem.frame_count):
-            frame = mem.get_frame(i)
-            frames_state.append({
-                "frame_id": frame.frame_id,
-                "is_occupied": frame.is_occupied,
-                "is_free": frame.is_free,
-                "page_number": frame.page_number,
-                "process_id": frame.process_id,
-                "dirty": frame.dirty_bit,
-                "hybrid_score": round(frame.hybrid_score, 4),
-                "access_count": frame.access_count,
-                "last_referenced_time": frame.last_referenced_time,
-                "load_time": frame.load_time,
-                "reference_bit": frame.reference_bit,
-            })
+        # 4. Serialize physical memory frames state with live decay
+        frames_state = engine.get_memory_snapshot()
 
         # 5. Extract metrics
         metrics = engine.metrics

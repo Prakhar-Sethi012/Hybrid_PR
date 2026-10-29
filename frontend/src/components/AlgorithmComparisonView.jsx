@@ -2,8 +2,6 @@ import React, { useMemo } from 'react';
 import {
   RefreshCw,
   GitBranch,
-  CheckCircle2,
-  AlertOctagon,
   Flame,
   Trophy,
 } from 'lucide-react';
@@ -14,56 +12,33 @@ const ALGORITHMS = [
     id: 'AdaptiveHybrid',
     name: 'AdaptiveHybrid',
     tag: 'Decayed LRFU + δ Dirty Cost',
-    borderClass: 'border-teal-600/50',
-    winnerBorderClass: 'border-teal-500',
-    badgeClass: 'bg-[#021812] text-teal-300 border-teal-600 font-bold',
     badge: 'Adaptive',
-    accentColor: 'text-teal-400',
-    bgClass: 'bg-[var(--bg-surface)]',
-    winnerBgClass: 'bg-[#041A14]',
-    dotColor: 'bg-teal-400',
   },
   {
     id: 'LRU',
     name: 'LRU',
     tag: 'Least Recently Used',
-    borderClass: 'border-[var(--border-default)]',
-    winnerBorderClass: 'border-[var(--border-default)]',
-    badgeClass: 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border-focus)] font-bold',
     badge: 'Recency',
-    accentColor: 'text-[var(--text-primary)]',
-    bgClass: 'bg-[var(--bg-surface)]',
-    winnerBgClass: 'bg-[var(--bg-surface)]',
-    dotColor: 'bg-zinc-400',
   },
   {
     id: 'LFU',
     name: 'LFU',
     tag: 'Least Frequently Used',
-    borderClass: 'border-purple-600/40',
-    winnerBorderClass: 'border-purple-600/40',
-    badgeClass: 'bg-[#16051E] text-purple-300 border-purple-600 font-bold',
     badge: 'Frequency',
-    accentColor: 'text-purple-400',
-    bgClass: 'bg-[var(--bg-surface)]',
-    winnerBgClass: 'bg-[var(--bg-surface)]',
-    dotColor: 'bg-purple-400',
   },
   {
     id: 'FIFO',
     name: 'FIFO',
     tag: 'First-In, First-Out',
-    borderClass: 'border-amber-600/40',
-    winnerBorderClass: 'border-amber-600/40',
-    badgeClass: 'bg-[#180F02] text-amber-300 border-amber-600 font-bold',
     badge: 'Arrival',
-    accentColor: 'text-amber-400',
-    bgClass: 'bg-[var(--bg-surface)]',
-    winnerBgClass: 'bg-[var(--bg-surface)]',
-    dotColor: 'bg-amber-400',
   },
 ];
 
+/**
+ * AlgorithmComparisonView (Tab 2: Divergence Matrix)
+ * Borderless, minimalist side-by-side execution of 4 policies.
+ * Highlights divergence points and dims losing algorithms at the end.
+ */
 export default function AlgorithmComparisonView({
   compareData,
   isLoading,
@@ -121,110 +96,98 @@ export default function AlgorithmComparisonView({
         hitRatio,
         dirtyWrites,
         eatMs: avgEat,
-        eatNs,
         total,
       };
     }
     return stats;
   }, [traces, currentStep]);
 
-  // Determine if simulation is at the end — find winner
-  const isAtEnd = totalSteps > 0 && currentStep >= totalSteps - 1;
-  const winnerAlgoId = useMemo(() => {
-    if (!isAtEnd) return null;
-    let best = null;
-    let bestEat = Infinity;
-    for (const algo of ALGORITHMS) {
-      const eat = cumulativeStats[algo.id]?.eatNs ?? Infinity;
-      if (eat < bestEat) {
-        bestEat = eat;
-        best = algo.id;
-      }
-    }
-    return best;
-  }, [isAtEnd, cumulativeStats]);
-
-  // Divergence at current step
+  // Divergence analysis at current step
   const divergenceInfo = useMemo(() => {
-    if (totalSteps === 0) return null;
+    if (totalSteps === 0 || currentStep < 0) return null;
     const actions = {};
-    const frames = {};
-    let isWrite = false;
-    let requestedPage = null;
-    let hasDirtyMistake = false;
+    const evicted = {};
+    const dirtyEvictions = {};
 
     for (const algo of ALGORITHMS) {
       const step = traces[algo.id]?.[currentStep];
       if (step) {
         actions[algo.id] = step.action;
-        frames[algo.id] = step.frame_id;
-        isWrite = step.is_write;
-        requestedPage = step.requested_page;
-        // "Fatal error": LRU/FIFO/LFU evicting dirty page while AdaptiveHybrid doesn't
-        if (algo.id !== 'AdaptiveHybrid' && step.was_dirty_write_back) {
-          hasDirtyMistake = true;
-        }
+        evicted[algo.id] = step.evicted_page;
+        dirtyEvictions[algo.id] = Boolean(step.was_dirty_write_back);
       }
     }
 
-    const hybridStep = traces['AdaptiveHybrid']?.[currentStep];
-    const hybridHasDirty = hybridStep?.was_dirty_write_back ?? false;
-
     const uniqueActions = new Set(Object.values(actions));
-    const hasDiff = uniqueActions.size > 1;
+    const isDivergent = uniqueActions.size > 1;
 
-    // Divergence severity
-    const severity =
-      hasDirtyMistake && !hybridHasDirty
-        ? 'fatal'   // others evicted dirty; hybrid avoided it
-        : hasDiff
-        ? 'diverge' // different HIT/FAULT outcomes
-        : 'sync';   // all in agreement
+    // Check for fatal divergence (e.g. standard evicting dirty, hybrid avoiding it)
+    const hybridEvictedDirty = dirtyEvictions['AdaptiveHybrid'];
+    const standardEvictedDirty =
+      dirtyEvictions['LRU'] || dirtyEvictions['LFU'] || dirtyEvictions['FIFO'];
+    const isFatalDivergence = standardEvictedDirty && !hybridEvictedDirty;
+
+    const refStep = traces['AdaptiveHybrid']?.[currentStep];
 
     return {
-      hasDiff,
-      severity,
+      isDivergent,
+      isFatalDivergence,
+      severity: isFatalDivergence ? 'fatal' : isDivergent ? 'diverge' : 'none',
       actions,
-      frames,
-      requestedPage,
-      isWrite,
-      hasDirtyMistake,
-      hybridHasDirty,
+      evicted,
+      dirtyEvictions,
+      requestedPage: refStep?.requested_page,
+      isWrite: refStep?.is_write,
     };
-  }, [traces, currentStep, totalSteps]);
+  }, [traces, totalSteps, currentStep]);
 
-  if (isLoading || !compareData) {
+  const isAtEnd = totalSteps > 0 && currentStep >= totalSteps - 1;
+
+  // Determine winner at end
+  const winnerAlgoId = useMemo(() => {
+    if (!isAtEnd) return null;
+    let lowestEat = Infinity;
+    let bestId = 'AdaptiveHybrid';
+    for (const algo of ALGORITHMS) {
+      const eat = parseFloat(cumulativeStats[algo.id]?.eatMs || '999999');
+      if (eat < lowestEat) {
+        lowestEat = eat;
+        bestId = algo.id;
+      }
+    }
+    return bestId;
+  }, [isAtEnd, cumulativeStats]);
+
+  if (isLoading) {
     return (
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-12 flex flex-col items-center justify-center font-sans text-xs text-[var(--text-secondary)] gap-3">
-        <RefreshCw className="w-8 h-8 animate-spin text-[var(--text-primary)]" />
-        <span className="font-bold text-[var(--text-primary)] text-sm">
+      <div className="bg-[#111111] rounded-lg p-8 flex flex-col items-center justify-center gap-3">
+        <RefreshCw className="w-5 h-5 text-zinc-400 animate-spin" />
+        <span className="font-semibold text-zinc-200 text-xs font-mono">
           Simulating 4 Hardware Policies in Synchrony...
         </span>
-        <span className="text-xs text-[var(--text-secondary)]">
-          Executing FIFO, LRU, LFU, and AdaptiveHybrid on the exact same trace
+        <span className="text-[11px] text-zinc-500 font-mono">
+          Executing FIFO, LRU, LFU, and AdaptiveHybrid on the identical reference trace
         </span>
       </div>
     );
   }
 
   const refTrace = traces['AdaptiveHybrid'] || [];
-
-  // ROI summary for winner callout
   const hybridStats = cumulativeStats['AdaptiveHybrid'];
   const fifoStats = cumulativeStats['FIFO'];
   const dirtyWriteSavings = Math.max(0, (fifoStats?.dirtyWrites ?? 0) - (hybridStats?.dirtyWrites ?? 0));
   const ioSavedMs = dirtyWriteSavings * 10;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Title & Refresh */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[var(--border-default)] gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 mb-1 gap-2">
         <div>
-          <h2 className="text-base font-bold text-[var(--text-primary)] tracking-tight font-sans">
-            Synchronized 4-Algorithm Divergence Observatory
+          <h2 className="text-sm font-bold text-zinc-100 tracking-tight font-sans">
+            Divergence Matrix
           </h2>
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-            FIFO, LRU, LFU, and AdaptiveHybrid running concurrently on the identical reference stream.
+          <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
+            Synchronized execution across FIFO, LRU, LFU, and AdaptiveHybrid
           </p>
         </div>
 
@@ -232,14 +195,14 @@ export default function AlgorithmComparisonView({
           type="button"
           onClick={onRefresh}
           disabled={isLoading}
-          className="btn-secondary px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-40"
+          className="px-3 py-1.5 rounded-md bg-[#161616] hover:bg-[#202020] text-zinc-300 text-xs font-mono flex items-center gap-2 cursor-pointer disabled:opacity-40 transition-colors self-start sm:self-auto"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
           <span>Re-run Comparison</span>
         </button>
       </div>
 
-      {/* Synchronized Timeline */}
+      {/* Synchronized Timeline Scrubber */}
       <PlaybackControls
         currentStep={currentStep}
         totalSteps={totalSteps}
@@ -251,78 +214,68 @@ export default function AlgorithmComparisonView({
         trace={refTrace}
       />
 
-      {/* Winner Banner (at end of simulation) */}
+      {/* Winner Banner (at completion) */}
       {isAtEnd && winnerAlgoId && (
-        <div className="p-4 rounded-xl border border-teal-600/60 bg-[#041A14] flex items-center gap-3 animate-winner-glow">
-          <div className="p-2 rounded-lg bg-teal-900/50 border border-teal-600/50">
-            <Trophy className="w-5 h-5 text-teal-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="font-bold text-teal-300 text-sm font-sans">AdaptiveHybrid wins</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-900/50 border border-teal-600 text-teal-300 font-bold">
-                LOWEST EAT
-              </span>
+        <div className="p-3.5 rounded-lg bg-[#111111] flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <Trophy className="w-4 h-4 text-zinc-300" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-zinc-100 font-mono">{winnerAlgoId} Wins</span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-200 font-bold uppercase">
+                  Lowest EAT
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
+                Saved {dirtyWriteSavings} dirty write-backs vs FIFO — prevented ~{ioSavedMs}ms disk I/O blocking
+              </p>
             </div>
-            <span className="text-xs text-[var(--text-secondary)] font-mono">
-              Saved {dirtyWriteSavings} dirty write-backs vs FIFO — prevented ~{ioSavedMs}ms of I/O blocking
-            </span>
           </div>
           <div className="text-right font-mono text-xs">
-            <div className="text-teal-400 font-bold">{hybridStats?.eatMs}ms EAT</div>
-            <div className="text-[var(--text-tertiary)] text-[10px]">{hybridStats?.hitRatio}% hit rate</div>
+            <div className="text-zinc-100 font-bold">{hybridStats?.eatMs}ms EAT</div>
+            <div className="text-zinc-500 text-[10px]">{hybridStats?.hitRatio}% hit rate</div>
           </div>
         </div>
       )}
 
-      {/* Divergence Moment Alert Banner */}
-      {divergenceInfo && (
+      {/* Divergence Timeline Marker Banner */}
+      {divergenceInfo && divergenceInfo.severity !== 'none' && (
         <div
-          className={`p-4 rounded-xl border text-xs transition-all duration-300 ${
+          className={`p-3 rounded-lg text-xs font-mono transition-colors ${
             divergenceInfo.severity === 'fatal'
-              ? 'bg-[#1A0A02] border-rose-600/70 text-rose-200'
-              : divergenceInfo.severity === 'diverge'
-              ? 'bg-[#180F02] border-amber-600/60 text-amber-200'
-              : 'bg-[var(--bg-base)] border-[var(--border-default)] text-[var(--text-secondary)]'
+              ? 'bg-[#180A0A] text-zinc-300'
+              : 'bg-[#181206] text-zinc-300'
           }`}
         >
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <GitBranch
-                className={`w-5 h-5 ${
-                  divergenceInfo.severity === 'fatal'
-                    ? 'text-rose-400'
-                    : divergenceInfo.severity === 'diverge'
-                    ? 'text-amber-400'
-                    : 'text-[var(--text-secondary)]'
+                className={`w-4 h-4 ${
+                  divergenceInfo.severity === 'fatal' ? 'text-rose-400' : 'text-amber-400'
                 }`}
                 aria-hidden="true"
               />
-              <span className="font-bold text-sm font-sans tracking-tight text-[var(--text-primary)]">
+              <span className="font-bold text-zinc-100">
                 {divergenceInfo.severity === 'fatal'
-                  ? '⚠ FATAL DIVERGENCE — DIRTY EVICTION DETECTED'
-                  : divergenceInfo.severity === 'diverge'
-                  ? 'POLICY DIVERGENCE DETECTED'
-                  : 'CONCORDANT CACHE TICK'}
+                  ? 'FATAL DIVERGENCE — DIRTY PAGE EVICTION'
+                  : 'POLICY DIVERGENCE'}
               </span>
-              <span className="text-[var(--text-tertiary)]">•</span>
-              <span className="font-mono text-[var(--text-primary)] font-semibold">
-                Page {divergenceInfo.requestedPage ?? '-'} ({divergenceInfo.isWrite ? 'STORE (WRITE)' : 'LOAD (READ)'})
+              <span className="text-zinc-600">·</span>
+              <span className="text-zinc-400">
+                Page {divergenceInfo.requestedPage ?? '-'} ({divergenceInfo.isWrite ? 'Write' : 'Read'})
               </span>
             </div>
 
-            <div className="flex items-center gap-3 font-mono text-xs">
+            <div className="flex items-center gap-2 text-[11px]">
               {ALGORITHMS.map((a) => {
                 const act = divergenceInfo.actions[a.id];
                 const isH = act === 'HIT';
                 return (
-                  <span key={a.id} className="flex items-center gap-1.5">
-                    <strong className="text-[var(--text-secondary)]">{a.name}:</strong>
+                  <span key={a.id} className="flex items-center gap-1">
+                    <span className="text-zinc-500">{a.name}:</span>
                     <span
-                      className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                        isH
-                          ? 'bg-[#02180A] text-emerald-300 border border-emerald-600'
-                          : 'bg-[#180404] text-rose-300 border border-rose-600'
+                      className={`font-semibold ${
+                        isH ? 'text-emerald-400' : 'text-rose-400'
                       }`}
                     >
                       {act}
@@ -334,20 +287,15 @@ export default function AlgorithmComparisonView({
           </div>
 
           {divergenceInfo.severity === 'fatal' && (
-            <p className="text-xs text-rose-300 mt-1.5 leading-normal font-sans">
-              Standard algorithms evicted a dirty page (10ms I/O penalty), while AdaptiveHybrid's C(p) cost model avoided this.
-            </p>
-          )}
-          {divergenceInfo.severity === 'diverge' && (
-            <p className="text-xs text-amber-300 mt-1.5 leading-normal font-sans">
-              Different historical eviction priorities retained or evicted Page {divergenceInfo.requestedPage}.
+            <p className="text-[11px] text-zinc-400 mt-1">
+              Standard policies evicted a dirty page (+10ms disk flush), while AdaptiveHybrid prioritized clean page eviction.
             </p>
           )}
         </div>
       )}
 
-      {/* 4-Way Comparison Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* 4-Way Mini Visualizers Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {ALGORITHMS.map((algo) => {
           const stepData = traces[algo.id]?.[currentStep];
           const stats = cumulativeStats[algo.id] || { hits: 0, faults: 0, hitRatio: '0.0', dirtyWrites: 0, eatMs: '0.000', total: 0 };
@@ -361,82 +309,77 @@ export default function AlgorithmComparisonView({
           return (
             <div
               key={algo.id}
-              className={`border rounded-xl p-4 flex flex-col justify-between transition-all duration-300 ${
-                isWinner
-                  ? `${algo.winnerBgClass} ${algo.winnerBorderClass} animate-winner-glow`
-                  : `${algo.bgClass} ${algo.borderClass}`
-              } ${isLoser ? 'opacity-50' : ''}`}
+              className={`bg-[#111111] rounded-lg p-3.5 flex flex-col justify-between transition-opacity duration-200 ${
+                isLoser ? 'opacity-40' : 'opacity-100'
+              }`}
             >
               <div>
                 {/* Panel Header */}
-                <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between pb-2 mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-extrabold font-mono text-base text-[var(--text-primary)]">
+                    <span className="font-bold font-mono text-sm text-zinc-100">
                       {algo.name}
                     </span>
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${algo.badgeClass}`}>
+                    <span className="text-[10px] font-mono text-zinc-500">
                       {algo.badge}
                     </span>
                     {isWinner && (
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-teal-600 bg-teal-900/50 text-teal-300 font-bold flex items-center gap-1">
-                        <Trophy className="w-3 h-3" />
-                        WINNER
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-200 font-bold flex items-center gap-1">
+                        <Trophy className="w-2.5 h-2.5" />
+                        LOWEST EAT
                       </span>
                     )}
                   </div>
-                  <span className="text-[11px] text-[var(--text-secondary)] font-sans">
+                  <span className="text-[10px] text-zinc-500 font-mono">
                     {algo.tag}
                   </span>
                 </div>
 
-                {/* Current Step Action */}
-                <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg p-3 mb-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider font-mono">
-                      Tick #{stepData?.step_id ?? currentStep + 1} Result
+                {/* Current Step Action Row */}
+                <div className="bg-[#161616] rounded p-2.5 mb-2.5 text-xs font-mono">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] text-zinc-500 uppercase">
+                      Tick #{stepData?.step_id ?? currentStep + 1}
                     </span>
                     <span
-                      className={`px-2.5 py-1 rounded text-xs font-mono font-bold border flex items-center gap-1.5 ${
-                        isHit
-                          ? 'bg-[#02180A] text-emerald-300 border-emerald-600'
-                          : 'bg-[#180404] text-rose-300 border-rose-600'
+                      className={`text-xs font-bold flex items-center gap-1 ${
+                        isHit ? 'text-emerald-400' : 'text-rose-400'
                       }`}
                     >
-                      {isHit ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-                      ) : (
-                        <AlertOctagon className="w-4 h-4 text-rose-400" aria-hidden="true" />
-                      )}
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          isHit ? 'bg-emerald-400' : 'bg-rose-400'
+                        }`}
+                      />
                       <span>{stepData?.action ?? 'N/A'}</span>
                     </span>
                   </div>
 
-                  <div className="text-xs font-mono space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[var(--text-secondary)]">Target Frame:</span>
-                      <strong className="text-[var(--text-primary)] font-bold">Frame #{stepData?.frame_id ?? 0}</strong>
+                  <div className="text-[11px] text-zinc-400 flex flex-wrap items-center justify-between gap-1">
+                    <div>
+                      <span className="text-zinc-500">Target: </span>
+                      <span className="text-zinc-200">Frame #{stepData?.frame_id ?? 0}</span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-[var(--text-secondary)]">Victim Eviction:</span>
+                    <div>
+                      <span className="text-zinc-500">Evicted: </span>
                       {isHit ? (
-                        <span className="text-emerald-400 font-medium">None (Hit)</span>
+                        <span className="text-zinc-400">None</span>
                       ) : hasEviction ? (
-                        <span className="text-amber-400 font-bold">Evicted P{stepData.evicted_page}</span>
+                        <span className="text-zinc-200 font-semibold">P{stepData.evicted_page}</span>
                       ) : (
-                        <span className="text-emerald-400 font-medium">None (Free slot)</span>
+                        <span className="text-zinc-400">Free Slot</span>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-[var(--text-secondary)]">Dirty Write-Back:</span>
+                    <div>
                       {isDirtyWrite ? (
-                        <span className="text-rose-400 font-bold flex items-center gap-1">
-                          <Flame className="w-3.5 h-3.5 text-amber-400 animate-flame-flicker" />
-                          +10ms Disk Flush
+                        <span className="text-amber-400 flex items-center gap-1">
+                          <Flame className="w-3 h-3" />
+                          +10ms Flush
                         </span>
                       ) : (
-                        <span className="text-[var(--text-tertiary)]">0ms Flush</span>
+                        <span className="text-zinc-600">0ms Flush</span>
                       )}
                     </div>
                   </div>
@@ -444,9 +387,9 @@ export default function AlgorithmComparisonView({
 
                 {/* Micro Memory Map */}
                 {stepData?.memory_state && (
-                  <div className="mb-3">
-                    <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1 font-mono">
-                      RAM Micro-Map
+                  <div className="mb-2.5">
+                    <span className="text-[9px] font-mono text-zinc-500 uppercase block mb-1">
+                      RAM Micro-Map ({stepData.memory_state.filter((f) => f.is_occupied).length} / {stepData.memory_state.length})
                     </span>
                     <div className="flex flex-wrap gap-1">
                       {stepData.memory_state.map((f) => {
@@ -454,14 +397,14 @@ export default function AlgorithmComparisonView({
                         return (
                           <div
                             key={f.frame_id}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono border text-center transition-all ${
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
                               !f.is_occupied
-                                ? 'bg-[var(--bg-base)] text-[var(--text-tertiary)] border-[var(--border-subtle)]'
+                                ? 'bg-[#181818] text-zinc-600'
                                 : f.dirty
-                                ? 'bg-[#211100] text-amber-300 border-amber-600 font-bold'
-                                : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-default)]'
-                            } ${isThisTarget ? 'ring-2 ring-[var(--text-primary)] scale-105' : ''}`}
-                            title={`Frame ${f.frame_id}: ${f.is_occupied ? `Page ${f.page_number}` : 'Empty'}`}
+                                ? 'bg-amber-950/40 text-amber-300 font-semibold'
+                                : 'bg-zinc-800 text-zinc-200'
+                            } ${isThisTarget ? 'ring-1 ring-zinc-400' : ''}`}
+                            title={`Frame ${f.frame_id}: ${f.is_occupied ? `Page ${f.page_number}` : 'Vacant'}`}
                           >
                             {f.is_occupied ? `P${f.page_number}` : '—'}
                           </div>
@@ -472,23 +415,23 @@ export default function AlgorithmComparisonView({
                 )}
               </div>
 
-              {/* Cumulative Stats */}
-              <div className="pt-3 border-t border-[var(--border-subtle)] grid grid-cols-4 gap-2 text-center text-xs font-mono">
-                <div className="p-2 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]">
-                  <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">Hit%</span>
-                  <span className="font-extrabold text-emerald-400 text-sm">{stats.hitRatio}%</span>
+              {/* Cumulative Metrics Strip */}
+              <div className="grid grid-cols-4 gap-1.5 text-center text-xs font-mono pt-2 border-t border-zinc-900">
+                <div className="p-1.5 rounded bg-[#161616]">
+                  <span className="text-[9px] text-zinc-500 uppercase block">Hit Rate</span>
+                  <span className="font-bold text-zinc-100 text-xs">{stats.hitRatio}%</span>
                 </div>
-                <div className="p-2 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]">
-                  <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">Faults</span>
-                  <span className="font-extrabold text-rose-400 text-sm">{stats.faults}</span>
+                <div className="p-1.5 rounded bg-[#161616]">
+                  <span className="text-[9px] text-zinc-500 uppercase block">Faults</span>
+                  <span className="font-bold text-zinc-100 text-xs">{stats.faults}</span>
                 </div>
-                <div className="p-2 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]">
-                  <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">Dirty</span>
-                  <span className="font-extrabold text-amber-400 text-sm">{stats.dirtyWrites}</span>
+                <div className="p-1.5 rounded bg-[#161616]">
+                  <span className="text-[9px] text-zinc-500 uppercase block">Dirty Flush</span>
+                  <span className="font-bold text-zinc-100 text-xs">{stats.dirtyWrites}</span>
                 </div>
-                <div className="p-2 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]">
-                  <span className="text-[10px] text-[var(--text-tertiary)] uppercase block">EAT</span>
-                  <span className="font-extrabold text-[var(--text-primary)] text-sm">{stats.eatMs}ms</span>
+                <div className="p-1.5 rounded bg-[#161616]">
+                  <span className="text-[9px] text-zinc-500 uppercase block">EAT</span>
+                  <span className="font-bold text-zinc-100 text-xs">{stats.eatMs}ms</span>
                 </div>
               </div>
             </div>
