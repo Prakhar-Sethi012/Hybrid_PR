@@ -14,6 +14,9 @@ import {
   RefreshCw,
   Activity,
   AlertCircle,
+  Download,
+  FileText,
+  TrendingDown,
 } from 'lucide-react';
 
 function BenchmarkTooltip({ active, payload, label, unitSuffix, frames, references }) {
@@ -50,7 +53,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [metricMode, setMetricMode] = useState('eat_ms'); // 'eat_ms', 'hit_ratio', 'dirty_writes'
+  const [metricMode, setMetricMode] = useState('eat_ms');
 
   const [seed, setSeed] = useState(42);
   const [references, setReferences] = useState(1000);
@@ -58,6 +61,60 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
   const [writeProb, setWriteProb] = useState(0.2);
 
   const lastRequestIdRef = React.useRef(0);
+
+  // CSV Export
+  const exportCSV = () => {
+    if (!data?.raw_results) return;
+    const headers = ['Workload', 'Algorithm', 'Hit Ratio %', 'Page Faults', 'Dirty Write-Backs', 'EAT (ms)'];
+    const rows = data.raw_results.map((row) => [
+      row.workload,
+      row.algorithm,
+      (row.hit_ratio * 100).toFixed(2),
+      row.page_faults,
+      row.dirty_write_backs,
+      ((row.eat || 0) / 1e6).toFixed(4),
+    ]);
+    const csv = [headers, ...rows].map((r) => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `benchmark_results_seed${seed}_${references}refs.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // PDF Export (print-as-PDF via browser)
+  const exportPDF = () => {
+    if (!data?.raw_results) return;
+    const rows = data.raw_results
+      .map(
+        (row) =>
+          `<tr style="border-bottom:1px solid #eee">
+            <td style="padding:6px 10px">${row.workload}</td>
+            <td style="padding:6px 10px;font-weight:bold">${row.algorithm}</td>
+            <td style="padding:6px 10px;text-align:right">${(row.hit_ratio * 100).toFixed(2)}%</td>
+            <td style="padding:6px 10px;text-align:right;color:#e11d48">${row.page_faults}</td>
+            <td style="padding:6px 10px;text-align:right;color:#d97706">${row.dirty_write_backs}</td>
+            <td style="padding:6px 10px;text-align:right;font-weight:bold">${((row.eat || 0) / 1e6).toFixed(4)} ms</td>
+          </tr>`
+      )
+      .join('');
+    const html = `<!DOCTYPE html><html><head><title>Benchmark Report</title>
+      <style>body{font-family:monospace;color:#000;background:#fff;padding:30px}
+      table{width:100%;border-collapse:collapse}th{background:#f0f0f0;padding:8px 10px;text-align:left}
+      h1{font-size:18px}p{font-size:12px;color:#555}</style></head><body>
+      <h1>OS Memory Simulator — Benchmark Report</h1>
+      <p>Seed: ${seed} | Frames: ${frames} | References: ${references} | Write Prob: ${(writeProb * 100).toFixed(0)}%</p>
+      <table><thead><tr><th>Workload</th><th>Algorithm</th><th>Hit Ratio</th><th>Faults</th><th>Dirty Writes</th><th>EAT (ms)</th></tr></thead>
+      <tbody>${rows}</tbody></table></body></html>`;
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      w.print();
+    }
+  };
 
   const fetchBenchmark = useCallback(async () => {
     const requestId = ++lastRequestIdRef.current;
@@ -194,6 +251,25 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
       bestEatPerWorkload,
     };
   }, [data, frames]);
+
+  // ROI: compute time saved vs worst algorithm
+  const roiSummary = useMemo(() => {
+    if (!data?.raw_results) return null;
+    const raw = data.raw_results;
+    const hybridRows = raw.filter((r) => r.algorithm === 'AdaptiveHybrid');
+    const fifoRows = raw.filter((r) => r.algorithm === 'FIFO');
+
+    const hybridDirty = hybridRows.reduce((acc, r) => acc + (r.dirty_write_backs || 0), 0);
+    const fifoDirty = fifoRows.reduce((acc, r) => acc + (r.dirty_write_backs || 0), 0);
+    const savedWrites = Math.max(0, fifoDirty - hybridDirty);
+    const savedMs = savedWrites * 10;
+
+    const hybridEat = hybridRows.reduce((acc, r) => acc + (r.eat || 0), 0) / Math.max(1, hybridRows.length);
+    const fifoEat = fifoRows.reduce((acc, r) => acc + (r.eat || 0), 0) / Math.max(1, fifoRows.length);
+    const eatDiffMs = ((fifoEat - hybridEat) / 1e6).toFixed(3);
+
+    return { savedWrites, savedMs, hybridDirty, fifoDirty, eatDiffMs };
+  }, [data]);
 
   return (
     <div className="space-y-4" aria-label="Operating systems benchmark matrix">
@@ -464,16 +540,73 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
         </div>
       )}
 
+      {/* ROI Widget */}
+      {roiSummary && (
+        <div className="bg-[var(--bg-surface)] border border-teal-600/40 rounded-xl p-4 sm:p-5">
+          <div className="flex items-center gap-2 pb-2.5 mb-3 border-b border-[var(--border-subtle)]">
+            <TrendingDown className="w-4 h-4 text-teal-400" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] font-mono">
+              Time Saved ROI Widget
+            </h3>
+            <span className="text-[10px] font-mono text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-2 py-0.5 rounded border border-[var(--border-default)]">
+              AdaptiveHybrid vs FIFO
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-3 rounded-xl bg-[#041A14] border border-teal-600/40 text-center">
+              <div className="text-2xl font-black font-mono text-teal-400">{roiSummary.savedWrites}</div>
+              <div className="text-xs font-mono text-[var(--text-secondary)] mt-1">Disk write-backs prevented</div>
+              <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">vs FIFO ({roiSummary.fifoDirty} writes)</div>
+            </div>
+            <div className="p-3 rounded-xl bg-[#041A14] border border-teal-600/40 text-center">
+              <div className="text-2xl font-black font-mono text-teal-400">{roiSummary.savedMs}ms</div>
+              <div className="text-xs font-mono text-[var(--text-secondary)] mt-1">I/O blocking time prevented</div>
+              <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{roiSummary.savedWrites} × 10ms/write</div>
+            </div>
+            <div className="p-3 rounded-xl bg-[#041A14] border border-teal-600/40 text-center">
+              <div className="text-2xl font-black font-mono text-teal-400">{roiSummary.eatDiffMs}ms</div>
+              <div className="text-xs font-mono text-[var(--text-secondary)] mt-1">avg EAT improvement</div>
+              <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">per workload run</div>
+            </div>
+          </div>
+          <p className="text-xs text-[var(--text-secondary)] font-mono mt-3 leading-relaxed">
+            AdaptiveHybrid saved {roiSummary.savedWrites} disk write-backs, preventing ~{roiSummary.savedMs}ms of I/O blocking compared to FIFO.
+            The C(p) dirty-cost penalty actively avoids unnecessary disk flushes.
+          </p>
+        </div>
+      )}
+
       {/* Complete Empirical Data Table */}
       {data?.raw_results && (
-        <div className="bg-[#0A0A0A] border border-[#222222] rounded-xl p-4 sm:p-5 overflow-hidden">
-          <div className="flex items-center justify-between pb-2.5 mb-3.5 border-b border-[#222222]">
-            <span className="text-xs font-bold uppercase tracking-wider text-white font-mono">
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-4 sm:p-5 overflow-hidden">
+          <div className="flex items-center justify-between pb-2.5 mb-3.5 border-b border-[var(--border-default)]">
+            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] font-mono">
               Complete Empirical Results Matrix
             </span>
-            <span className="text-[11px] font-mono text-zinc-400">
-              16 Benchmark Iterations
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-[var(--text-secondary)]">
+                16 Benchmark Iterations
+              </span>
+              {/* Export Controls */}
+              <button
+                type="button"
+                onClick={exportCSV}
+                className="btn-secondary px-2.5 py-1 rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
+                title="Export to CSV"
+              >
+                <Download className="w-3 h-3" />
+                CSV
+              </button>
+              <button
+                type="button"
+                onClick={exportPDF}
+                className="btn-secondary px-2.5 py-1 rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
+                title="Export to PDF"
+              >
+                <FileText className="w-3 h-3" />
+                PDF
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">

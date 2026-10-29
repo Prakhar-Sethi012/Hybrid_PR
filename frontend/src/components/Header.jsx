@@ -30,6 +30,7 @@ export default function Header({
     { id: 'STEPPER', label: 'Execution Lab', icon: Layers },
     { id: 'COMPARE', label: '4-Way Divergence', icon: GitCompare },
     { id: 'BENCHMARK', label: 'Benchmark Suite', icon: BarChart3 },
+    { id: 'SANDBOX', label: 'Formula Sandbox', icon: Cpu },
   ];
 
   const presets = [
@@ -40,7 +41,7 @@ export default function Header({
   ];
 
   return (
-    <header className="border-b border-[#222222] bg-black sticky top-0 z-40 transition-colors">
+    <header className="border-b border-[var(--border-default)] bg-[var(--bg-base)] sticky top-0 z-40 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Main Nav Strip */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between py-2.5 gap-3">
@@ -65,7 +66,7 @@ export default function Header({
           </div>
 
           {/* Center Tabs: Solid Segmented Switcher */}
-          <nav className="flex items-center p-1 bg-[#0D0D0D] rounded-lg border border-[#222222]" aria-label="Observatory Navigation">
+          <nav className="flex items-center p-1 bg-[var(--bg-elevated)] rounded-lg border border-[var(--border-default)]" aria-label="Observatory Navigation">
             {navTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeView === tab.id;

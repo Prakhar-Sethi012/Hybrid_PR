@@ -8,7 +8,7 @@ export default function PerformanceMetricsRibbon({ metrics, latencies, isLoading
         {[...Array(5)].map((_, i) => (
           <div
             key={i}
-            className="h-24 bg-[#0A0A0A] border border-[#222222] rounded-xl animate-pulse p-3.5"
+            className="h-24 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl animate-pulse p-3.5"
           />
         ))}
       </div>
@@ -90,7 +90,7 @@ export default function PerformanceMetricsRibbon({ metrics, latencies, isLoading
         return (
           <div
             key={idx}
-            className="bg-[#0A0A0A] border border-[#222222] rounded-xl p-3.5 flex flex-col justify-between transition-all duration-120 hover:border-[#383838]"
+            className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-xl p-3.5 flex flex-col justify-between transition-all duration-120 hover:border-[var(--border-focus)]"
           >
             <div>
               <div className="flex items-center justify-between gap-1 mb-1">
@@ -109,13 +109,13 @@ export default function PerformanceMetricsRibbon({ metrics, latencies, isLoading
                 <Icon className="w-4 h-4 text-zinc-600 opacity-60" aria-hidden="true" />
               </div>
 
-              <div className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate">
+              <div className="text-[11px] text-[var(--text-secondary)] font-mono mt-0.5 truncate">
                 {c.subtext}
               </div>
             </div>
 
             {c.progress !== null && (
-              <div className="w-full bg-[#181818] h-1.5 rounded-full overflow-hidden mt-3">
+              <div className="w-full bg-[var(--bg-elevated)] h-1.5 rounded-full overflow-hidden mt-3">
                 <div
                   className={`h-full ${c.progressColor} rounded-full transition-all duration-300`}
                   style={{ width: `${Math.min(100, Math.max(0, c.progress * 100))}%` }}

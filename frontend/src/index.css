@@ -2,84 +2,152 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --bg-main: #000000;
-    --card-main: #0A0A0A;
-    --border-main: #222222;
-  }
+/* ─────────────────────────────────────────────────────
+   DESIGN TOKENS — DARK (Default / AMOLED Black)
+   Professional, minimalistic: inspired by Vercel / Datadog
+───────────────────────────────────────────────────── */
+:root {
+  /* Surface */
+  --bg-base: #000000;
+  --bg-surface: #0A0A0A;
+  --bg-elevated: #111111;
+  --bg-overlay: #141414;
 
+  /* Border */
+  --border-subtle: #1A1A1A;
+  --border-default: #222222;
+  --border-strong: #2E2E2E;
+  --border-focus: #3F3F46;
+
+  /* Text */
+  --text-primary: #FAFAFA;
+  --text-secondary: #A1A1AA;
+  --text-tertiary: #52525B;
+  --text-mono: #E4E4E7;
+
+  /* Semantic Accents (very sparse) */
+  --accent-hit: #34D399;       /* emerald-400 — cache hit */
+  --accent-fault: #FB7185;     /* rose-400 — page fault */
+  --accent-dirty: #FBBF24;     /* amber-400 — dirty page */
+  --accent-hybrid: #2DD4BF;    /* teal-400 — AdaptiveHybrid brand */
+  --accent-lfu: #C084FC;       /* purple-400 — LFU */
+
+  /* Button */
+  --btn-primary-bg: #FAFAFA;
+  --btn-primary-text: #000000;
+  --btn-secondary-bg: #111111;
+  --btn-secondary-text: #E4E4E7;
+  --btn-secondary-border: #27272A;
+}
+
+/* ─────────────────────────────────────────────────────
+   LIGHT THEME OVERRIDES
+   Crisp, high-contrast, professional (like Vercel Light)
+───────────────────────────────────────────────────── */
+.light {
+  --bg-base: #F9FAFB;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F4F4F5;
+  --bg-overlay: #E4E4E7;
+
+  --border-subtle: #E4E4E7;
+  --border-default: #D4D4D8;
+  --border-strong: #A1A1AA;
+  --border-focus: #71717A;
+
+  --text-primary: #09090B;
+  --text-secondary: #52525B;
+  --text-tertiary: #A1A1AA;
+  --text-mono: #18181B;
+
+  --accent-hit: #059669;
+  --accent-fault: #E11D48;
+  --accent-dirty: #D97706;
+  --accent-hybrid: #0D9488;
+  --accent-lfu: #9333EA;
+
+  --btn-primary-bg: #09090B;
+  --btn-primary-text: #FAFAFA;
+  --btn-secondary-bg: #F4F4F5;
+  --btn-secondary-text: #18181B;
+  --btn-secondary-border: #D4D4D8;
+}
+
+/* ─────────────────────────────────────────────────────
+   BASE STYLES
+───────────────────────────────────────────────────── */
+@layer base {
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #000000;
-    color: #FFFFFF;
-    transition: background-color 0.15s ease, color 0.15s ease;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   code, pre, .font-mono {
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
   }
+
+  * {
+    border-color: var(--border-default);
+  }
 }
 
-/* AMOLED High-Contrast Solid Action Buttons — No gradients, no AI slop */
+/* ─────────────────────────────────────────────────────
+   BUTTON SYSTEM
+───────────────────────────────────────────────────── */
 .btn-primary {
-  background-color: #FFFFFF;
-  color: #000000;
-  border: 1px solid #FFFFFF;
+  background-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: 1px solid var(--btn-primary-bg);
   font-weight: 700;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   transition: all 0.12s ease;
 }
 .btn-primary:hover {
-  background-color: #E4E4E7;
-  border-color: #E4E4E7;
+  opacity: 0.88;
   transform: translateY(-1px);
 }
 .btn-primary:active {
   transform: translateY(1px);
-  background-color: #D4D4D8;
+  opacity: 1;
 }
 
 .btn-secondary {
-  background-color: #121212;
-  color: #E4E4E7;
-  border: 1px solid #27272A;
+  background-color: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
   font-weight: 500;
   transition: all 0.12s ease;
 }
 .btn-secondary:hover {
-  background-color: #1C1C1E;
-  border-color: #3F3F46;
-  color: #FFFFFF;
+  background-color: var(--bg-elevated);
+  border-color: var(--border-focus);
+  color: var(--text-primary);
   transform: translateY(-1px);
 }
 .btn-secondary:active {
   transform: translateY(1px);
 }
 
-/* Light Theme Overrides (if toggled) */
-.light body {
-  background-color: #FFFFFF;
-  color: #09090B;
-}
-.light .btn-primary {
-  background-color: #09090B;
-  color: #FFFFFF;
-  border-color: #09090B;
-}
-.light .btn-secondary {
-  background-color: #F4F4F5;
-  color: #18181B;
-  border: 1px solid #E4E4E7;
-}
-.light .btn-secondary:hover {
-  background-color: #E4E4E7;
-  border-color: #D4D4D8;
-}
+/* ─────────────────────────────────────────────────────
+   THEME-AWARE SURFACE CLASSES (use with CSS vars)
+───────────────────────────────────────────────────── */
+.surface-base    { background-color: var(--bg-base); }
+.surface-card    { background-color: var(--bg-surface); }
+.surface-raised  { background-color: var(--bg-elevated); }
+.surface-overlay { background-color: var(--bg-overlay); }
+.text-primary-themed    { color: var(--text-primary); }
+.text-secondary-themed  { color: var(--text-secondary); }
+.text-mono-themed       { color: var(--text-mono); }
+.border-themed          { border-color: var(--border-default); }
+.border-subtle-themed   { border-color: var(--border-subtle); }
 
-/* Custom Minimalist Scrollbar */
+/* ─────────────────────────────────────────────────────
+   CUSTOM SCROLLBAR
+───────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -88,53 +156,167 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272A;
+  background: var(--border-strong);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3F3F46;
+  background: var(--border-focus);
 }
 
-/* Range Scrubber Slider — Pure Solid AMOLED */
+/* ─────────────────────────────────────────────────────
+   RANGE SLIDER
+───────────────────────────────────────────────────── */
 input[type=range] {
   -webkit-appearance: none;
   appearance: none;
-  background: #181818;
+  background: var(--bg-elevated);
   height: 5px;
   border-radius: 9999px;
   outline: none;
-  border: 1px solid #27272A;
+  border: 1px solid var(--border-default);
 }
-
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  background: #FFFFFF;
-  border: 2px solid #000000;
+  background: var(--btn-primary-bg);
+  border: 2px solid var(--bg-base);
   cursor: pointer;
   transition: transform 0.1s ease;
 }
 input[type=range]::-webkit-slider-thumb:hover {
   transform: scale(1.2);
 }
-
 input[type=range]::-moz-range-thumb {
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  background: #FFFFFF;
-  border: 2px solid #000000;
+  background: var(--btn-primary-bg);
+  border: 2px solid var(--bg-base);
   cursor: pointer;
 }
 
-/* Motion Accessibility */
+/* ─────────────────────────────────────────────────────
+   ANIMATIONS
+───────────────────────────────────────────────────── */
+
+/* Frame selected/active pop */
+@keyframes frame-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+.animate-frame-pop {
+  animation: frame-pop 0.25s ease-in-out;
+}
+
+/* Dirty eviction warning flash — amber border pulse */
+@keyframes dirty-eviction-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.0); border-color: rgba(251, 191, 36, 0.4); }
+  30%  { box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.35); border-color: rgba(251, 191, 36, 1); }
+  60%  { box-shadow: 0 0 0 10px rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.7); }
+  100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.0); border-color: rgba(251, 191, 36, 0.4); }
+}
+.animate-dirty-flash {
+  animation: dirty-eviction-flash 0.7s ease-out;
+}
+
+/* EAT clock jump */
+@keyframes eat-clock-jump {
+  0%   { transform: scale(1); color: inherit; }
+  25%  { transform: scale(1.15); color: #FBBF24; }
+  60%  { transform: scale(1.08); color: #FB923C; }
+  100% { transform: scale(1); color: inherit; }
+}
+.animate-eat-jump {
+  animation: eat-clock-jump 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Subtle page fault pulse on HeroMemoryAccess */
+@keyframes fault-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.82; }
+}
+.animate-fault-pulse {
+  animation: fault-pulse 1.5s ease-in-out infinite;
+}
+
+/* Flame flicker for dirty pages */
+@keyframes flame-flicker {
+  0%, 100% { opacity: 1; transform: scale(1) rotate(-2deg); }
+  33% { opacity: 0.85; transform: scale(1.08) rotate(1deg); }
+  66% { opacity: 0.95; transform: scale(0.96) rotate(-1deg); }
+}
+.animate-flame-flicker {
+  animation: flame-flicker 0.9s ease-in-out infinite;
+}
+
+/* Modal enter */
+@keyframes modal-enter {
+  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-enter {
+  animation: modal-enter 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Instruction tape scroll indicator */
+@keyframes tape-slide-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-tape-slide {
+  animation: tape-slide-in 0.2s ease-out;
+}
+
+/* Winner highlight glow (AdaptiveHybrid) */
+@keyframes winner-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.0); }
+  50% { box-shadow: 0 0 16px 2px rgba(45, 212, 191, 0.22); }
+}
+.animate-winner-glow {
+  animation: winner-glow 2.5s ease-in-out infinite;
+}
+
+/* Tooltip fade-in */
+@keyframes tooltip-fade-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-tooltip-in {
+  animation: tooltip-fade-in 0.15s ease-out;
+}
+
+/* ─────────────────────────────────────────────────────
+   INSTRUCTION TAPE
+───────────────────────────────────────────────────── */
+.instruction-tape {
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+}
+.instruction-tape::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─────────────────────────────────────────────────────
+   TOOLTIP
+───────────────────────────────────────────────────── */
+.tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+  text-decoration: underline dashed 1px;
+  text-underline-offset: 3px;
+}
+
+/* ─────────────────────────────────────────────────────
+   MOTION ACCESSIBILITY
+───────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

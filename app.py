@@ -63,6 +63,10 @@ class SimulateRequest(BaseModel):
     window_size: Optional[int] = Field(default=100, ge=10, le=5000, description="Tuning/thrashing window size N")
     upper_fault_threshold: Optional[float] = Field(default=0.20, ge=0.0, le=1.0)
     suspension_duration: Optional[int] = Field(default=2, ge=1, le=20)
+    custom_reference_string: Optional[List[int]] = Field(
+        default=None,
+        description="Optional custom reference string (array of page numbers). If provided, bypasses the workload generator. Write probability still applies to determine write accesses.",
+    )
 
 
 def _generate_trace_for_workload(
@@ -143,14 +147,22 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
     - Simulation trace summary
     """
     try:
-        # 1. Generate memory access trace
-        trace = _generate_trace_for_workload(
-            workload_type=req.workload_type,
-            references=req.references,
-            page_count=req.page_count or 30,
-            write_prob=req.write_probability,
-            seed=req.seed,
-        )
+        # 1. Generate memory access trace (or use custom reference string)
+        if req.custom_reference_string:
+            import random as _rng
+            rnd = _rng.Random(req.seed or 42)
+            trace = [
+                (page_num, rnd.random() < req.write_probability)
+                for page_num in req.custom_reference_string
+            ]
+        else:
+            trace = _generate_trace_for_workload(
+                workload_type=req.workload_type,
+                references=req.references,
+                page_count=req.page_count or 30,
+                write_prob=req.write_probability,
+                seed=req.seed,
+            )
 
         # 2. Instantiate simulator components without duplicating core logic
         mem = MemoryManager(frame_count=req.frame_count)
@@ -195,6 +207,17 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
         # Full execution trace for step-by-step playback
         execution_trace = []
         for res in access_results:
+            # Extract C(p) math breakdown for interactive tooltips
+            cp_breakdown = None
+            if hasattr(engine, "_last_victim_info") and engine._last_victim_info:
+                vinfo = engine._last_victim_info
+                if "cost" in vinfo and "s_decayed" in vinfo:
+                    cp_breakdown = {
+                        "score": round(vinfo.get("s_decayed", 0.0), 4),
+                        "dirty_penalty": round(vinfo.get("dirty_penalty", 0.0), 4),
+                        "total_cost": round(vinfo.get("cost", 0.0), 4),
+                        "lambda": round(vinfo.get("lambda", 0.5), 4),
+                    }
             execution_trace.append({
                 "step_id": res.timestamp,
                 "requested_page": res.page_number,
@@ -206,10 +229,14 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
                 "hybrid_score": round(res.hybrid_score, 4),
                 "memory_state": res.memory_state,
                 "decision_log": res.decision_log,
+                "cp_breakdown": cp_breakdown,
             })
 
         # Recent accesses sample
         recent_log = execution_trace[-20:]
+
+        # Reference string for the instruction tape
+        reference_string = [int(item[0]) if isinstance(item, tuple) else int(item) for item in trace]
 
         return {
             "config": {
@@ -219,7 +246,9 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
                 "references": req.references,
                 "write_probability": req.write_probability,
                 "seed": req.seed,
+                "custom_reference_string": req.custom_reference_string,
             },
+            "reference_string": reference_string,
             "metrics": {
                 "total_accesses": metrics.total_accesses,
                 "page_hits": metrics.page_hits,

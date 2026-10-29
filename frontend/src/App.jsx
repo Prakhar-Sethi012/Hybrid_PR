@@ -9,6 +9,8 @@ import PhysicalMemoryMap from './components/PhysicalMemoryMap';
 import AlgorithmComparisonView from './components/AlgorithmComparisonView';
 import BenchmarkAnalysisView from './components/BenchmarkAnalysisView';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
+import InstructionTape from './components/InstructionTape';
+import FormulaSandbox from './components/FormulaSandbox';
 import { AlertCircle } from 'lucide-react';
 
 export default function App() {
@@ -20,9 +22,10 @@ export default function App() {
     references: 500,
     write_probability: 0.2,
     seed: 42,
+    custom_reference_string: null,
   });
 
-  const [activeView, setActiveView] = useState('STEPPER'); // 'STEPPER', 'COMPARE', 'BENCHMARK'
+  const [activeView, setActiveView] = useState('STEPPER'); // 'STEPPER', 'COMPARE', 'BENCHMARK', 'SANDBOX'
   const [isApiHealthy, setIsApiHealthy] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -46,7 +49,7 @@ export default function App() {
   const [compareSpeed, setCompareSpeed] = useState(200);
   const compareTimerRef = useRef(null);
 
-  // Manage Theme Classes on HTML element
+  // Manage Theme Classes on HTML element & CSS variable class
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -271,6 +274,7 @@ export default function App() {
 
   // Extract current trace tick data for Single Playback
   const traceList = simulationData?.execution_trace || [];
+  const referenceString = simulationData?.reference_string || [];
   const currentStep =
     currentStepIndex >= 0 && currentStepIndex < traceList.length
       ? traceList[currentStepIndex]
@@ -297,6 +301,7 @@ export default function App() {
       frame_count: p.frames,
       references: p.refs,
       write_probability: p.writeProb,
+      custom_reference_string: null,
     };
     setConfig(updated);
     runSimulation(updated);
@@ -305,8 +310,13 @@ export default function App() {
     }
   };
 
+  // Theme-aware root background/color
+  const rootClass = theme === 'light'
+    ? 'min-h-screen bg-[#F9FAFB] text-[#09090B] flex flex-col font-sans transition-colors duration-200'
+    : 'min-h-screen bg-black text-white flex flex-col font-sans transition-colors duration-200';
+
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col font-sans transition-colors duration-150">
+    <div className={rootClass}>
       {/* Top Observatory Command Header */}
       <Header
         activeView={activeView}
@@ -325,7 +335,7 @@ export default function App() {
         onApplyPreset={handleApplyPreset}
       />
 
-      {/* Main Workspace Canvas (No Cluttering Sidebar!) */}
+      {/* Main Workspace Canvas */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col">
         {/* Error Notification */}
         {error && (
@@ -344,15 +354,35 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 1: EXECUTION OBSERVATORY LAB */}
+        {/* VIEW 1: EXECUTION STUDIO */}
         {activeView === 'STEPPER' && (
           <div>
-            {/* Top HUD: Telemetry Metrics Ribbon */}
+            {/* Performance Metrics Ribbon */}
             <PerformanceMetricsRibbon
               metrics={simulationData?.metrics}
               latencies={simulationData?.latencies}
               isLoading={isLoading}
             />
+
+            {/* Instruction Tape — full width above the 60/40 split */}
+            <div className="mb-4">
+              <div className="mb-1.5 flex items-center gap-2 text-[10px] font-mono text-[var(--text-tertiary)] uppercase tracking-wider">
+                <span>▶ Instruction Tape</span>
+                <span className="text-[var(--text-tertiary)]">
+                  {referenceString.length > 0 ? `${referenceString.length} references` : ''}
+                </span>
+                {config.custom_reference_string && (
+                  <span className="px-1.5 py-0.5 rounded bg-teal-900/50 text-teal-400 border border-teal-600/50 text-[9px] font-bold">
+                    CUSTOM STRING
+                  </span>
+                )}
+              </div>
+              <InstructionTape
+                referenceString={referenceString}
+                currentIndex={currentStepIndex}
+                executionTrace={traceList}
+              />
+            </div>
 
             {/* Split Observatory Deck: 60% Execution Core | 40% Silicon Memory Die */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -421,16 +451,21 @@ export default function App() {
         {activeView === 'BENCHMARK' && (
           <BenchmarkAnalysisView apiBaseUrl="" />
         )}
+
+        {/* VIEW 4: FORMULA SANDBOX */}
+        {activeView === 'SANDBOX' && (
+          <FormulaSandbox />
+        )}
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[#222222] bg-[#0A0A0A] py-3 px-6 text-xs text-zinc-400 font-sans mt-auto">
+      <footer className="border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] py-3 px-6 text-xs text-[var(--text-tertiary)] font-sans mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
-            HybridMemoryLab &bull; Discrete-Event Systems Memory Simulator
+            HybridMemoryLab · Discrete-Event Systems Memory Simulator
           </span>
-          <span className="font-mono text-[11px] text-zinc-400">
-            Hardware: RAM 100ns &bull; Fault Read 10ms (10,000,000ns) &bull; Dirty Flush &delta; 10ms
+          <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
+            Hardware: RAM 100ns · Fault Read 10ms · Dirty Flush δ 10ms
           </span>
         </div>
       </footer>
