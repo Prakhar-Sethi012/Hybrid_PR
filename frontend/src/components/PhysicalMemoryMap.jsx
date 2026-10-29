@@ -180,6 +180,17 @@ export default function PhysicalMemoryMap({
             ? frame.live_Cp
             : (liveSp + (isDirty ? 2.0 : 0.0));
 
+          // Ghost Victims: identify which alternative algorithms would have evicted this frame
+          const ghostAlgos = [];
+          if (currentStepData?.alternative_victims) {
+            Object.entries(currentStepData.alternative_victims).forEach(([algoName, victimFid]) => {
+              if (victimFid === frame.frame_id) {
+                ghostAlgos.push(algoName);
+              }
+            });
+          }
+          const ghostLabel = ghostAlgos.length > 0 ? `[${ghostAlgos.join(' / ')} would evict]` : null;
+
           return (
             <div
               key={frame.frame_id}
@@ -227,6 +238,16 @@ export default function PhysicalMemoryMap({
                   </div>
                 )}
               </div>
+
+              {/* Ghost Badge (e.g. [LRU would evict] or [LRU / FIFO would evict]) */}
+              {ghostLabel && (
+                <div
+                  className="text-[9px] font-mono text-zinc-400 text-center tracking-tight truncate -my-0.5 select-none"
+                  title={`Ghost Victim: ${ghostAlgos.join(', ')} would have evicted this frame`}
+                >
+                  {ghostLabel}
+                </div>
+              )}
 
               {/* Bottom: Live Decayed S(p) & C(p) — unboxed, muted gray */}
               <div className="mt-1 flex items-center justify-between">
@@ -288,6 +309,17 @@ export default function PhysicalMemoryMap({
                   {(selectedFrame.live_Cp ?? ((selectedFrame.hybrid_score ?? 1.0) + (selectedFrame.dirty ? 2.0 : 0.0))).toFixed(4)}
                 </span>
               </div>
+              {currentStepData?.alternative_victims && (
+                <div className="col-span-2 pt-1 border-t border-zinc-800">
+                  <span className="text-[10px] text-zinc-500 uppercase block">Ghost Eviction Alternate</span>
+                  <span className="text-zinc-300 font-mono text-xs">
+                    {Object.entries(currentStepData.alternative_victims)
+                      .filter(([_, fid]) => fid === selectedFrame.frame_id)
+                      .map(([algo]) => `${algo} would evict`)
+                      .join(' / ') || 'None (No standard policy targeted this frame)'}
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-zinc-500">Vacant memory slot.</p>

@@ -265,6 +265,15 @@ class TestSimulationEngineStage3(unittest.TestCase):
                 else:
                     self.assertAlmostEqual(frame["live_Cp"], frame["live_Sp"], places=3)
 
+        # Verify alternative_victims for Ghost Victims peek
+        self.assertIsNone(results[0].alternative_victims)  # Cold allocation
+        self.assertIsNone(results[2].alternative_victims)  # Hit
+        self.assertIsNotNone(results[3].alternative_victims)  # Eviction
+        self.assertEqual(set(results[3].alternative_victims.keys()), {"LRU", "LFU", "FIFO"})
+        self.assertIsInstance(results[3].alternative_victims["LRU"], int)
+        self.assertIsInstance(results[3].alternative_victims["LFU"], int)
+        self.assertIsInstance(results[3].alternative_victims["FIFO"], int)
+
 
 if __name__ == "__main__":
     unittest.main()

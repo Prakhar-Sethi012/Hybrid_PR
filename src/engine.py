@@ -489,6 +489,7 @@ class AccessResult:
     decision_log: str = ""
     memory_state: Optional[List[Dict[str, Any]]] = None
     victim_info: Optional[Dict[str, Any]] = None
+    alternative_victims: Optional[Dict[str, int]] = None
 
     def __repr__(self) -> str:
         status = "HIT" if self.is_hit else "FAULT"
@@ -948,6 +949,21 @@ class SimulationEngine:
 
             else:
                 # Case B: Memory full -> Select victim using configured policy
+                # Perform stateless 'peek' for Ghost Victims (alternative algorithm victim selections)
+                saved_victim_info = getattr(self, "_last_victim_info", None)
+                alternative_victims: Optional[Dict[str, int]] = None
+                try:
+                    alternative_victims = {
+                        "LRU": self._select_victim_lru(),
+                        "LFU": self._select_victim_lfu(),
+                        "FIFO": self._select_victim_fifo(),
+                    }
+                except Exception:
+                    alternative_victims = None
+                finally:
+                    # Restore _last_victim_info so the peek does not overwrite active policy's victim info
+                    self._last_victim_info = saved_victim_info
+
                 victim_frame_id = self._select_victim()
                 victim_frame = self.memory_manager.get_frame(victim_frame_id)
 
@@ -1035,6 +1051,7 @@ class SimulationEngine:
                     hybrid_score=1.0,
                     decision_log=decision_log,
                     victim_info=vinfo,
+                    alternative_victims=alternative_victims,
                 )
 
         # 5. Parameter Controller window tracking & dynamic lambda tuning

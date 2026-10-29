@@ -221,6 +221,7 @@ def simulate(req: SimulateRequest) -> Dict[str, Any]:
                 "memory_state": res.memory_state,
                 "decision_log": res.decision_log,
                 "cp_breakdown": cp_breakdown,
+                "alternative_victims": getattr(res, "alternative_victims", None),
             })
 
         # Recent accesses sample
@@ -363,6 +364,7 @@ def compare_algorithms(req: CompareRequest) -> Dict[str, Any]:
                     "memory_state": res.memory_state,
                     "decision_log": res.decision_log,
                     "cp_breakdown": cp_breakdown,
+                    "alternative_victims": getattr(res, "alternative_victims", None),
                 })
 
             results[algo] = {
