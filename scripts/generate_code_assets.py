@@ -1,6 +1,7 @@
 """
 Codebase Snippet Image Generator for Presentation Slides.
-Renders sleek, dark-mode/AMOLED macOS-style window cards with syntax highlighting.
+Reads the ACTUAL, existing source files directly from disk (src/engine.py, src/workload.py).
+Renders sleek, dark-mode/AMOLED macOS-style window cards with exact line numbers and syntax highlighting.
 """
 
 import os
@@ -20,7 +21,7 @@ PALETTE = {
     'title_text': (161, 161, 170, 255),  # #A1A1AA Mono Title
     'badge_bg': (39, 39, 42, 255),       # #27272A Badge background
     'badge_text': (16, 185, 129, 255),   # #10B981 Soft Emerald
-    'line_num': (82, 82, 91, 255),       # #52525B Line Numbers
+    'line_num': (113, 113, 122, 255),    # #71717A Line Numbers
     'line_div': (39, 39, 42, 255),       # Line Divider
     # Syntax Tokens
     Token.Keyword: (192, 132, 252, 255),       # #C084FC Purple
@@ -29,7 +30,7 @@ PALETTE = {
     Token.Name.Class: (56, 189, 248, 255),     # #38BDF8 Sky Blue
     Token.Name.Builtin: (56, 189, 248, 255),   # Sky
     Token.String: (52, 211, 153, 255),         # #34D399 Emerald
-    Token.String.Doc: (113, 113, 122, 255),    # #71717A Muted Slate
+    Token.String.Doc: (161, 161, 170, 255),    # #A1A1AA Muted Slate
     Token.Number: (251, 191, 36, 255),         # #FBBF24 Amber
     Token.Comment: (113, 113, 122, 255),       # #71717A Muted Slate
     Token.Operator: (244, 63, 94, 255),        # #F43F5E Rose
@@ -49,15 +50,17 @@ def render_code_card(
     code_text: str,
     title: str,
     badge: str,
-    output_filename: str,
+    output_filenames: list,
+    start_line_num: int = 1,
     font_size: int = 18,
     scale: int = 2
 ):
     """
-    Renders high-resolution macOS-style window card for a code snippet.
+    Renders high-resolution macOS-style window card for actual repository code.
+    Preserves exact file line numbering.
     """
-    code_lines = code_text.strip().split('\n')
-    num_lines = len(code_lines)
+    raw_lines = code_text.splitlines()
+    num_lines = len(raw_lines)
 
     # Base dimensions (unscaled)
     char_w = 11
@@ -65,11 +68,11 @@ def render_code_card(
     pad_x = 36
     pad_y = 36
     header_h = 44
-    line_num_w = 54
+    line_num_w = 64
 
-    max_line_len = max(len(l) for l in code_lines) if code_lines else 60
+    max_line_len = max(len(l) for l in raw_lines) if raw_lines else 60
     content_w = line_num_w + (max_line_len * char_w) + 40
-    card_w = max(800, content_w + (pad_x * 2))
+    card_w = max(860, content_w + (pad_x * 2))
     card_h = header_h + (num_lines * line_h) + (pad_y * 2)
 
     total_w = card_w + 80
@@ -99,7 +102,7 @@ def render_code_card(
     # Header bar
     h_bottom = cy1 + (header_h * scale)
     draw.rounded_rectangle([cx1, cy1, cx2, h_bottom], radius=radius, fill=PALETTE['title_bg'])
-    draw.rectangle([cx1, h_bottom - (radius), cx2, h_bottom], fill=PALETTE['title_bg'])
+    draw.rectangle([cx1, h_bottom - radius, cx2, h_bottom], fill=PALETTE['title_bg'])
     draw.line([cx1, h_bottom, cx2, h_bottom], fill=PALETTE['window_border'], width=1 * scale)
 
     # Window Control Dots (macOS style)
@@ -144,184 +147,119 @@ def render_code_card(
     lexer = PythonLexer()
     tokens = list(lex(code_text, lexer))
 
-    current_line = 1
+    line_idx = 0
     curr_x = code_start_x
     curr_y = code_start_y
 
     # Draw first line number
-    draw.text((cx1 + (16 * scale), curr_y), f"{current_line:2d}", fill=PALETTE['line_num'], font=font)
+    draw.text((cx1 + (16 * scale), curr_y), f"{start_line_num + line_idx:4d}", fill=PALETTE['line_num'], font=font)
 
     for token_type, val in tokens:
         color = get_token_color(token_type)
         parts = val.split('\n')
         for idx, part in enumerate(parts):
             if idx > 0:
-                # New line
-                current_line += 1
+                line_idx += 1
                 curr_x = code_start_x
                 curr_y += (line_h * scale)
-                if current_line <= num_lines:
-                    draw.text((cx1 + (16 * scale), curr_y), f"{current_line:2d}", fill=PALETTE['line_num'], font=font)
+                if line_idx < num_lines:
+                    draw.text((cx1 + (16 * scale), curr_y), f"{start_line_num + line_idx:4d}", fill=PALETTE['line_num'], font=font)
             if part:
                 draw.text((curr_x, curr_y), part, fill=color, font=font)
                 bbox = draw.textbbox((curr_x, curr_y), part, font=font)
                 curr_x += (bbox[2] - bbox[0])
 
     os.makedirs('project_assets', exist_ok=True)
-    out_path = os.path.join('project_assets', output_filename)
-    img.save(out_path, format='PNG', optimize=True)
-    print(f"Created {out_path} ({sw}x{sh})")
+    for fname in output_filenames:
+        out_path = os.path.join('project_assets', fname)
+        img.save(out_path, format='PNG', optimize=True)
+        print(f"Saved: {out_path} ({sw}x{sh}) [Lines {start_line_num}-{start_line_num + num_lines - 1}]")
 
 
-def generate_all_snippets():
-    # Snippet 1: The Core Math
-    code1 = '''def _select_victim_hybrid(self) -> int:
-    """
-    Adaptive Hybrid Page Replacement victim selection.
-    Calculates each candidate's decayed hybrid score:
-        S(p) = S_old * (1/2)^(lambda * Delta t)
-    and total eviction cost:
-        C(p) = S(p) + [delta if dirty else 0.0]
-    Evicts the physical frame with the minimum cost C(p).
-    """
-    if not self.memory_manager.occupied_frames:
-        raise RuntimeError("No memory frames occupied.")
-    current_time = self.clock.current_time()
-    candidates = []
+def extract_and_generate_all():
+    print("Reading ACTUAL repository source files from disk...")
 
-    for frame_id in self.memory_manager.occupied_frames:
-        frame = self.memory_manager.get_frame(frame_id)
+    # Load actual src/engine.py
+    engine_path = os.path.abspath('src/engine.py')
+    with open(engine_path, 'r', encoding='utf-8') as f:
+        engine_lines = f.readlines()
+    print(f"Loaded {engine_path} ({len(engine_lines)} lines)")
 
-        # Elapsed time since last memory reference
-        delta_t = max(0.0, float(current_time - frame.last_referenced_time))
+    # Load actual src/workload.py
+    workload_path = os.path.abspath('src/workload.py')
+    with open(workload_path, 'r', encoding='utf-8') as f:
+        workload_lines = f.readlines()
+    print(f"Loaded {workload_path} ({len(workload_lines)} lines)")
 
-        # Recursive exponential decay: S(p) = S * 2^(-lambda * delta_t)
-        s_decayed = compute_decayed_score(frame.hybrid_score, self.lambda_value, delta_t)
+    # Helper: dedent class methods by 4 spaces while preserving relative indentation
+    def clean_slice(lines, start_idx, end_idx):
+        sliced = lines[start_idx:end_idx]
+        result = []
+        for l in sliced:
+            if l.startswith('    '):
+                result.append(l[4:])
+            elif l.strip() == '':
+                result.append('\n')
+            else:
+                result.append(l)
+        return ''.join(result)
 
-        # Dirty penalty delta (10ms I/O disk writeback latency)
-        is_dirty = bool(frame.dirty_bit)
-        dirty_penalty = self.delta if is_dirty else 0.0
-
-        # Total Cost: C(p) = S(p) + Dirty Penalty
-        total_cost = s_decayed + dirty_penalty
-        candidates.append((round(total_cost, 9), frame.last_referenced_time, frame.frame_id, s_decayed))
-
-    # Minimum C(p); tie-breaker: oldest referenced timestamp
-    best_candidate = min(candidates, key=lambda c: (c[0], c[1], c[2]))
-    return best_candidate[2]'''
-
+    # ----------------------------------------------------
+    # SNIPPET 1: The Core Math (_select_victim_hybrid)
+    # Exact lines: 735 to 790 in src/engine.py
+    # ----------------------------------------------------
+    code1 = clean_slice(engine_lines, 734, 790)
     render_code_card(
-        code1,
+        code_text=code1,
         title="src/engine.py — _select_victim_hybrid()",
-        badge="Core Metric C(p) = S(p) + δ",
-        output_filename="core_math_hybrid_decay.png"
+        badge="Live Math: C(p) = S(p) + δ",
+        output_filenames=["core_math_hybrid_decay.png"],
+        start_line_num=735
     )
 
-    # Snippet 2: Dynamic Tuning
-    code2 = '''class AdaptiveParameterController:
-    """
-    Autonomous Parameter Controller for dynamic lambda tuning and cost penalties.
-    Tuning Logic (Window-based evaluation):
-        Every N accesses (window_size=100):
-            r = faults_in_window / N
-            If r > 0.10: lambda = min(1.0, lambda + 0.05)  # Shift towards LRU (recency)
-            If r < 0.02: lambda = max(0.0, lambda - 0.05)  # Shift towards LFU (frequency)
-    """
-    def record_access(self, is_fault: bool) -> Optional[float]:
-        self.window_accesses += 1
-        if is_fault:
-            self.window_faults += 1
-
-        if self.window_accesses >= self.window_size:
-            return self.tune()
-        return None
-
-    def tune(self) -> float:
-        r = self.window_faults / self.window_size if self.window_size > 0 else 0.0
-
-        # High fault rate -> memory thrashing pressure -> bias toward recency (LRU)
-        if r > 0.10:
-            self.lambda_value = min(1.0, round(self.lambda_value + 0.05, 6))
-        # Very low fault rate -> stable locality -> bias toward frequency (LFU)
-        elif r < 0.02:
-            self.lambda_value = max(0.0, round(self.lambda_value - 0.05, 6))
-
-        # Reset window counters
-        self.window_faults = 0
-        self.window_accesses = 0
-        return self.lambda_value'''
-
+    # ----------------------------------------------------
+    # SNIPPET 2: Dynamic Tuning (AdaptiveParameterController)
+    # Exact lines: 102 to 145 in src/engine.py
+    # Shows record_access() and tune() with fault thresholds:
+    #   r > 0.10 -> lambda += 0.05
+    #   r < 0.02 -> lambda -= 0.05
+    # ----------------------------------------------------
+    code2 = clean_slice(engine_lines, 101, 145)
     render_code_card(
-        code2,
+        code_text=code2,
         title="src/engine.py — AdaptiveParameterController.tune()",
-        badge="Dynamic λ Tuning Dial",
-        output_filename="dynamic_tuning_controller.png"
+        badge="Autonomous λ Dial",
+        output_filenames=["dynamic_tuning_controller.png"],
+        start_line_num=102
     )
 
-    # Snippet 3: Baseline Algorithms
-    code3 = '''# Baseline Replacement Algorithms (Industry Standards for Empirical Benchmark)
-
-def _select_victim_fifo(self) -> int:
-    """FIFO: Evicts frame that arrived earliest (smallest load_time)."""
-    candidates = [(self.memory_manager.get_frame(fid).load_time, fid)
-                  for fid in self.memory_manager.occupied_frames]
-    return min(candidates, key=lambda c: (c[0], c[1]))[1]
-
-def _select_victim_lru(self) -> int:
-    """LRU: Evicts frame referenced least recently (smallest last_referenced_time)."""
-    candidates = [(self.memory_manager.get_frame(fid).last_referenced_time, fid)
-                  for fid in self.memory_manager.occupied_frames]
-    return min(candidates, key=lambda c: (c[0], c[1]))[1]
-
-def _select_victim_lfu(self) -> int:
-    """LFU: Evicts frame with lowest access count (LRU tie-breaker)."""
-    candidates = [(self.memory_manager.get_frame(fid).access_count,
-                   self.memory_manager.get_frame(fid).last_referenced_time, fid)
-                  for fid in self.memory_manager.occupied_frames]
-    return min(candidates, key=lambda c: (c[0], c[1], c[2]))[2]'''
-
+    # ----------------------------------------------------
+    # SNIPPET 3: Baseline Policies (_select_victim_fifo & _select_victim_lru)
+    # Exact lines: 672 to 713 in src/engine.py
+    # Shows standard FIFO and LRU implementations
+    # ----------------------------------------------------
+    code3 = clean_slice(engine_lines, 671, 713)
     render_code_card(
-        code3,
-        title="src/engine.py — Baseline Algorithms (FIFO / LRU / LFU)",
-        badge="Hardware Baseline Standard",
-        output_filename="baseline_algorithms_fifo_lru_lfu.png"
+        code_text=code3,
+        title="src/engine.py — _select_victim_fifo() & _select_victim_lru()",
+        badge="Baseline Policies",
+        output_filenames=["baseline_policies_fifo_lru.png", "baseline_algorithms_fifo_lru_lfu.png"],
+        start_line_num=672
     )
 
-    # Snippet 4: Workload Generation
-    code4 = '''def generate_zipf_hot_cold(
-    self, page_range, hot_page_ratio=0.2, hot_request_ratio=0.8,
-    num_references=1000, write_probability=0.2
-) -> List[Tuple[int, bool]]:
-    """
-    Simulates high temporal locality: 80% of references target 20% of pages (Pareto/Zipf).
-    Attaches dirty write operations according to write_probability.
-    """
-    pages = _parse_page_range(page_range)
-    num_hot = max(1, int(round(len(pages) * hot_page_ratio)))
-    hot_pages, cold_pages = pages[:num_hot], pages[num_hot:]
-
-    references: List[int] = []
-    for _ in range(num_references):
-        if not cold_pages or self.rng.random() < hot_request_ratio:
-            chosen = self.rng.choice(hot_pages)
-        else:
-            chosen = self.rng.choice(cold_pages)
-        references.append(chosen)
-
-    return self._attach_writes(references, include_writes=True, write_probability=write_probability)
-
-def generate_loop(self, page_range, loop_size=5, num_iterations=10, write_probability=0.2):
-    """Cyclic memory loops mimicking sequential iteration, array scans, or batch workloads."""
-    pages = _parse_page_range(page_range)[:loop_size]
-    references = pages * num_iterations
-    return self._attach_writes(references, include_writes=True, write_probability=write_probability)'''
-
+    # ----------------------------------------------------
+    # SNIPPET 4: Workload Generation (generate_zipf_hot_cold)
+    # Exact lines: 251 to 314 in src/workload.py
+    # Shows 80/20 Pareto/Zipf temporal locality generation
+    # ----------------------------------------------------
+    code4 = clean_slice(workload_lines, 250, 314)
     render_code_card(
-        code4,
-        title="src/workload.py — generate_zipf_hot_cold() & generate_loop()",
-        badge="Workload Locality Generators",
-        output_filename="workload_generation_zipf_loop.png"
+        code_text=code4,
+        title="src/workload.py — generate_zipf_hot_cold()",
+        badge="Zipf 80/20 Workload",
+        output_filenames=["workload_generation_zipf.png", "workload_generation_zipf_loop.png"],
+        start_line_num=251
     )
 
 if __name__ == '__main__':
-    generate_all_snippets()
+    extract_and_generate_all()
