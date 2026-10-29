@@ -49,6 +49,7 @@ export default function AlgorithmComparisonView({
   onPlayPause,
   onSpeedChange,
   onRefresh,
+  config,
 }) {
   // Extract traces
   const traces = useMemo(() => {
@@ -187,7 +188,7 @@ export default function AlgorithmComparisonView({
             Divergence Matrix
           </h2>
           <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
-            Synchronized execution across FIFO, LRU, LFU, and AdaptiveHybrid
+            Synchronized execution across FIFO, LRU, LFU, and AdaptiveHybrid ({config?.frame_count || 10} Frames)
           </p>
         </div>
 
@@ -386,10 +387,10 @@ export default function AlgorithmComparisonView({
                 </div>
 
                 {/* Micro Memory Map */}
-                {stepData?.memory_state && (
+                {stepData?.memory_state ? (
                   <div className="mb-2.5">
                     <span className="text-[9px] font-mono text-zinc-500 uppercase block mb-1">
-                      RAM Micro-Map ({stepData.memory_state.filter((f) => f.is_occupied).length} / {stepData.memory_state.length})
+                      RAM Micro-Map ({stepData.memory_state.filter((f) => f.is_occupied).length} / {stepData.memory_state.length} Frames)
                     </span>
                     <div className="flex flex-wrap gap-1">
                       {stepData.memory_state.map((f) => {
@@ -410,6 +411,22 @@ export default function AlgorithmComparisonView({
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-2.5">
+                    <span className="text-[9px] font-mono text-zinc-500 uppercase block mb-1">
+                      RAM Micro-Map (0 / {config?.frame_count || 10} Frames)
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({ length: config?.frame_count || 10 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#181818] text-zinc-600"
+                        >
+                          —
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

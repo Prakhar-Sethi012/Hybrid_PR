@@ -110,6 +110,9 @@ export default function App() {
     []
   );
 
+  // Track configuration key that compareData was executed with
+  const lastComparedConfigKey = useRef('');
+
   // Run comparison simulation across all 4 algorithms on identical workload
   const runCompare = useCallback(
     async (customConfig) => {
@@ -119,16 +122,19 @@ export default function App() {
       if (compareTimerRef.current) clearInterval(compareTimerRef.current);
       setError(null);
 
+      const cfgKey = `${activeCfg.frame_count}_${activeCfg.references}_${activeCfg.write_probability}_${activeCfg.workload_type}_${activeCfg.seed}_${JSON.stringify(activeCfg.custom_reference_string)}`;
+
       try {
         const res = await fetch('/api/compare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workload_type: activeCfg.workload_type,
-            frame_count: activeCfg.frame_count,
-            references: Math.min(activeCfg.references, 500),
-            write_probability: activeCfg.write_probability,
-            seed: activeCfg.seed,
+            frame_count: Number(activeCfg.frame_count),
+            references: Number(activeCfg.references),
+            write_probability: Number(activeCfg.write_probability),
+            seed: Number(activeCfg.seed ?? 42),
+            custom_reference_string: activeCfg.custom_reference_string || null,
           }),
         });
 
@@ -139,6 +145,7 @@ export default function App() {
 
         const data = await res.json();
         setCompareData(data);
+        lastComparedConfigKey.current = cfgKey;
         setCompareStepIndex(0);
         setIsApiHealthy(true);
       } catch (err) {
@@ -158,12 +165,13 @@ export default function App() {
     runSimulation();
   }, [runSimulation]);
 
-  // Auto-fetch comparison data when switching to compare tab
+  // Synchronize comparison data whenever switching to compare tab or when config changes
   useEffect(() => {
-    if (activeView === 'COMPARE' && !compareData && !isCompareLoading) {
-      runCompare();
+    const activeKey = `${config.frame_count}_${config.references}_${config.write_probability}_${config.workload_type}_${config.seed}_${JSON.stringify(config.custom_reference_string)}`;
+    if (activeView === 'COMPARE' && (!compareData || lastComparedConfigKey.current !== activeKey) && !isCompareLoading) {
+      runCompare(config);
     }
-  }, [activeView, compareData, isCompareLoading, runCompare]);
+  }, [activeView, config, compareData, isCompareLoading, runCompare]);
 
   // Stepper Playback Loop
   useEffect(() => {
@@ -305,9 +313,7 @@ export default function App() {
     };
     setConfig(updated);
     runSimulation(updated);
-    if (activeView === 'COMPARE') {
-      runCompare(updated);
-    }
+    runCompare(updated);
   };
 
   // Theme-aware root background/color
@@ -326,7 +332,7 @@ export default function App() {
         onOpenSettings={() => setShowSettings(true)}
         onRunSimulation={() => {
           runSimulation(config);
-          if (activeView === 'COMPARE') runCompare(config);
+          runCompare(config);
         }}
         isLoading={isLoading || isCompareLoading}
         theme={theme}
@@ -428,13 +434,14 @@ export default function App() {
             playbackSpeed={compareSpeed}
             onPlayPause={() => setIsComparePlaying(!isComparePlaying)}
             onSpeedChange={(speed) => setCompareSpeed(speed)}
-            onRefresh={() => runCompare()}
+            onRefresh={() => runCompare(config)}
+            config={config}
           />
         )}
 
         {/* VIEW 3: 4×4 BENCHMARK SUITE */}
         {activeView === 'BENCHMARK' && (
-          <BenchmarkAnalysisView apiBaseUrl="" />
+          <BenchmarkAnalysisView config={config} apiBaseUrl="" />
         )}
 
         {/* VIEW 4: FORMULA SANDBOX */}
@@ -461,7 +468,7 @@ export default function App() {
         onChange={setConfig}
         onRunSimulation={() => {
           runSimulation(config);
-          if (activeView === 'COMPARE') runCompare(config);
+          runCompare(config);
         }}
         isLoading={isLoading || isCompareLoading}
         isOpen={showSettings}

@@ -395,21 +395,26 @@ def compare_algorithms(req: CompareRequest) -> Dict[str, Any]:
 @app.get("/api/benchmark")
 def get_benchmark(
     seed: int = Query(default=42, description="Pseudo-random seed for workload generator"),
-    references: int = Query(default=1000, ge=50, le=10000, description="References per workload trace"),
-    frames: int = Query(default=10, ge=2, le=64, description="Physical memory frames"),
-    write_prob: float = Query(default=0.2, ge=0.0, le=1.0, description="Write probability"),
+    references: int = Query(default=1000, ge=10, le=10000, description="References per workload trace"),
+    frames: Optional[int] = Query(default=None, ge=1, le=128, description="Physical memory frames"),
+    frame_count: Optional[int] = Query(default=None, ge=1, le=128, description="Physical memory frames alias"),
+    write_prob: Optional[float] = Query(default=None, ge=0.0, le=1.0, description="Write probability"),
+    write_probability: Optional[float] = Query(default=None, ge=0.0, le=1.0, description="Write probability alias"),
 ) -> Dict[str, Any]:
     """
     Triggers run_benchmark() logic from evaluate.py.
     Returns comparative data (FIFO vs LRU vs LFU vs AdaptiveHybrid) across all 4 workloads
     formatted as JSON for frontend charting.
     """
+    active_frames = frame_count if frame_count is not None else (frames if frames is not None else 10)
+    active_write_prob = write_probability if write_probability is not None else (write_prob if write_prob is not None else 0.2)
+
     try:
         results = evaluate_run_benchmark(
             seed=seed,
             num_references=references,
-            frame_count=frames,
-            write_probability=write_prob,
+            frame_count=active_frames,
+            write_probability=active_write_prob,
             print_table=False,
         )
 
@@ -433,8 +438,8 @@ def get_benchmark(
             "meta": {
                 "seed": seed,
                 "references": references,
-                "frames": frames,
-                "write_probability": write_prob,
+                "frames": active_frames,
+                "write_probability": active_write_prob,
             },
         }
 

@@ -17,6 +17,14 @@ import {
   TrendingDown,
 } from 'lucide-react';
 
+// Semantic Algorithm Colors
+const ALGO_COLORS = {
+  AdaptiveHybrid: '#10B981', // Soft Emerald
+  LRU: '#3B82F6',            // Muted Blue
+  LFU: '#8B5CF6',            // Muted Purple
+  FIFO: '#F43F5E',           // Muted Rose
+};
+
 function BenchmarkTooltip({ active, payload, label, unitSuffix, frames, references }) {
   if (active && payload && payload.length) {
     return (
@@ -26,20 +34,23 @@ function BenchmarkTooltip({ active, payload, label, unitSuffix, frames, referenc
           <span className="text-[10px] text-zinc-500 font-mono">{frames} Frames · {references} Refs</span>
         </div>
         <div className="space-y-1 font-mono text-[11px]">
-          {payload.map((entry, index) => (
-            <div key={index} className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className={entry.name === 'AdaptiveHybrid' ? 'font-bold text-zinc-100' : 'text-zinc-400'}>
-                  {entry.name}:
+          {payload.map((entry, index) => {
+            const algoColor = ALGO_COLORS[entry.name] || entry.color || '#E4E4E7';
+            return (
+              <div key={index} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: algoColor }} />
+                  <span style={{ color: algoColor }} className="font-semibold">
+                    {entry.name}:
+                  </span>
+                </div>
+                <span className="font-bold text-zinc-100">
+                  {entry.value}
+                  {unitSuffix}
                 </span>
               </div>
-              <span className="font-bold text-zinc-200">
-                {entry.value}
-                {unitSuffix}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -49,20 +60,38 @@ function BenchmarkTooltip({ active, payload, label, unitSuffix, frames, referenc
 
 /**
  * BenchmarkAnalysisView (Tab 3: Benchmark Analytics)
- * Monochromatic, border-free analytical view comparing hardware policies across workloads.
+ * Analytical view comparing hardware policies across workloads.
+ * Fully reactive to global configuration / presets and rendered with distinct semantic colors.
  */
-export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
+export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [metricMode, setMetricMode] = useState('eat_ms');
 
-  const [seed, setSeed] = useState(42);
-  const [references, setReferences] = useState(1000);
-  const [frames, setFrames] = useState(10);
-  const [writeProb, setWriteProb] = useState(0.2);
+  // Track global configuration values from props
+  const globalFrames = config?.frame_count ?? 10;
+  const globalReferences = config?.references ?? 1000;
+  const globalWriteProb = config?.write_probability ?? 0.2;
+  const globalSeed = config?.seed ?? 42;
+
+  // Local state initialized with global config
+  const [seed, setSeed] = useState(globalSeed);
+  const [references, setReferences] = useState(globalReferences);
+  const [frames, setFrames] = useState(globalFrames);
+  const [writeProb, setWriteProb] = useState(globalWriteProb);
 
   const lastRequestIdRef = React.useRef(0);
+
+  // Sync local controls whenever global config / presets change
+  useEffect(() => {
+    if (config) {
+      if (config.frame_count !== undefined) setFrames(config.frame_count);
+      if (config.references !== undefined) setReferences(config.references);
+      if (config.write_probability !== undefined) setWriteProb(config.write_probability);
+      if (config.seed !== undefined) setSeed(config.seed);
+    }
+  }, [config?.frame_count, config?.references, config?.write_probability, config?.seed]);
 
   // CSV Export
   const exportCSV = () => {
@@ -81,12 +110,12 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `benchmark_results_seed${seed}_${references}refs.csv`;
+    a.download = `benchmark_results_seed${seed}_${references}refs_${frames}frames.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  // PDF Export (print-as-PDF via browser)
+  // PDF Export
   const exportPDF = () => {
     if (!data?.raw_results) return;
     const rows = data.raw_results
@@ -118,12 +147,13 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
     }
   };
 
-  const fetchBenchmark = useCallback(async () => {
+  // Fetch benchmark matrix
+  const fetchBenchmark = useCallback(async (f = frames, r = references, wp = writeProb, s = seed) => {
     const requestId = ++lastRequestIdRef.current;
     setIsLoading(true);
     setError(null);
     try {
-      const url = `${apiBaseUrl}/api/benchmark?seed=${seed}&references=${references}&frames=${frames}&write_prob=${writeProb}`;
+      const url = `${apiBaseUrl}/api/benchmark?seed=${s}&references=${r}&frames=${f}&frame_count=${f}&write_prob=${wp}&write_probability=${wp}`;
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Benchmark matrix failed: ${res.status} ${res.statusText}`);
@@ -141,11 +171,22 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
         setIsLoading(false);
       }
     }
-  }, [apiBaseUrl, seed, references, frames, writeProb]);
+  }, [apiBaseUrl, frames, references, writeProb, seed]);
 
+  // Trigger fresh fetch whenever global config (preset) OR local sliders change
   useEffect(() => {
-    fetchBenchmark();
-  }, [fetchBenchmark]);
+    fetchBenchmark(frames, references, writeProb, seed);
+  }, [
+    fetchBenchmark,
+    frames,
+    references,
+    writeProb,
+    seed,
+    config?.frame_count,
+    config?.references,
+    config?.write_probability,
+    config?.seed,
+  ]);
 
   // Transform raw_results into clustered chart structure
   const chartData = useMemo(() => {
@@ -198,59 +239,6 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
     }
   };
 
-  // Empirical Takeaways dynamically computed
-  const empiricalTakeaways = useMemo(() => {
-    if (!data?.raw_results) return null;
-    const raw = data.raw_results;
-    const activeFrames = data?.parameters?.frames ?? frames;
-
-    const loopRows = raw.filter((r) => r.workload === 'Loop');
-    const loopHybrid = loopRows.find((r) => r.algorithm === 'AdaptiveHybrid');
-    const loopLru = loopRows.find((r) => r.algorithm === 'LRU');
-
-    let loopText = '';
-    if (loopHybrid && loopLru) {
-      const hybridHit = (loopHybrid.hit_ratio * 100).toFixed(1);
-      const lruHit = (loopLru.hit_ratio * 100).toFixed(1);
-      if (loopHybrid.hit_ratio > loopLru.hit_ratio) {
-        loopText = `Under cyclic loop access (working set > ${activeFrames} frames), AdaptiveHybrid achieved ${hybridHit}% hit ratio vs LRU's ${lruHit}%.`;
-      } else {
-        loopText = `In this loop test, AdaptiveHybrid achieved ${hybridHit}% vs LRU's ${lruHit}%.`;
-      }
-    }
-
-    const totalDirtyByAlgo = {};
-    raw.forEach((r) => {
-      totalDirtyByAlgo[r.algorithm] = (totalDirtyByAlgo[r.algorithm] || 0) + (r.dirty_write_backs || 0);
-    });
-
-    const bestEatPerWorkload = {};
-    const workloads = [...new Set(raw.map((r) => r.workload))];
-    workloads.forEach((w) => {
-      const wRows = raw.filter((r) => r.workload === w);
-      let bestRow = null;
-      let minEat = Infinity;
-      wRows.forEach((r) => {
-        if ((r.eat || 0) < minEat) {
-          minEat = r.eat || 0;
-          bestRow = r;
-        }
-      });
-      if (bestRow) {
-        bestEatPerWorkload[w] = {
-          algorithm: bestRow.algorithm,
-          eatMs: (minEat / 1e6).toFixed(2),
-        };
-      }
-    });
-
-    return {
-      loopText,
-      totalDirtyByAlgo,
-      bestEatPerWorkload,
-    };
-  }, [data, frames]);
-
   // 'Time Saved' ROI Widget
   const roiSummary = useMemo(() => {
     if (!data?.raw_results) return null;
@@ -273,7 +261,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
     });
 
     const savedWrites = Math.max(0, fifoDirty - hybridDirty);
-    const savedMs = (savedWrites * 10);
+    const savedMs = savedWrites * 10;
     const eatDiffMs = workloadCount > 0 ? (((fifoEatTotal - hybridEatTotal) / workloadCount) / 1e6).toFixed(2) : '0';
 
     return {
@@ -295,7 +283,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               Benchmark Analytics
             </h2>
             <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
-              Empirical multi-workload comparison (Sequential, Loop, Zipf, Random)
+              Empirical multi-workload comparison (Sequential, Loop, Random, Zipf)
             </p>
           </div>
 
@@ -339,7 +327,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
 
             <button
               type="button"
-              onClick={fetchBenchmark}
+              onClick={() => fetchBenchmark(frames, references, writeProb, seed)}
               disabled={isLoading}
               className="p-1.5 rounded bg-[#181818] hover:bg-[#202020] text-zinc-400 hover:text-zinc-200 cursor-pointer disabled:opacity-40 transition-colors"
               title="Re-run benchmark matrix"
@@ -358,9 +346,9 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               id="bench-frames"
               value={frames}
               onChange={(e) => setFrames(Number(e.target.value))}
-              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
+              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none cursor-pointer"
             >
-              {[6, 8, 10, 12, 16, 20].map((f) => (
+              {[4, 6, 8, 10, 12, 16, 20, 32].map((f) => (
                 <option key={f} value={f}>{f} frames</option>
               ))}
             </select>
@@ -374,7 +362,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               id="bench-refs"
               value={references}
               onChange={(e) => setReferences(Number(e.target.value))}
-              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
+              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none cursor-pointer"
             >
               {[200, 500, 1000, 2000].map((r) => (
                 <option key={r} value={r}>{r} refs</option>
@@ -390,7 +378,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
               id="bench-writes"
               value={writeProb}
               onChange={(e) => setWriteProb(Number(e.target.value))}
-              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
+              className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none cursor-pointer"
             >
               {[0.1, 0.2, 0.3, 0.5].map((w) => (
                 <option key={w} value={w}>{(w * 100).toFixed(0)}% writes</option>
@@ -459,10 +447,16 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
                 <Legend
                   wrapperStyle={{ paddingTop: '8px', fontSize: '11px', fontFamily: 'monospace' }}
                 />
-                <Bar dataKey="FIFO" fill="#71717A" radius={[2, 2, 0, 0]} name="FIFO" />
-                <Bar dataKey="LFU" fill="#A1A1AA" radius={[2, 2, 0, 0]} name="LFU" />
-                <Bar dataKey="LRU" fill="#D4D4D8" radius={[2, 2, 0, 0]} name="LRU" />
-                <Bar dataKey="AdaptiveHybrid" fill="#FAFAFA" radius={[2, 2, 0, 0]} name="AdaptiveHybrid" />
+                {/* Distinct Minimalist Semantic Colors:
+                    AdaptiveHybrid: Soft Emerald (#10B981)
+                    LRU: Muted Blue (#3B82F6)
+                    LFU: Muted Purple (#8B5CF6)
+                    FIFO: Muted Rose (#F43F5E)
+                */}
+                <Bar dataKey="FIFO" fill="#F43F5E" radius={[2, 2, 0, 0]} name="FIFO" />
+                <Bar dataKey="LRU" fill="#3B82F6" radius={[2, 2, 0, 0]} name="LRU" />
+                <Bar dataKey="LFU" fill="#8B5CF6" radius={[2, 2, 0, 0]} name="LFU" />
+                <Bar dataKey="AdaptiveHybrid" fill="#10B981" radius={[2, 2, 0, 0]} name="AdaptiveHybrid" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -474,7 +468,7 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
         <div className="bg-[#111111] rounded-lg p-4">
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-900 text-xs font-mono">
             <div className="flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-zinc-300" />
+              <TrendingDown className="w-4 h-4 text-emerald-400" />
               <span className="font-semibold text-zinc-200">
                 Time Saved ROI Summary
               </span>
@@ -486,17 +480,17 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div className="p-3 rounded-md bg-[#161616] text-center">
-              <div className="text-xl font-bold font-mono text-zinc-100">{roiSummary.savedWrites}</div>
+              <div className="text-xl font-bold font-mono text-emerald-400">{roiSummary.savedWrites}</div>
               <div className="text-[11px] font-mono text-zinc-400 mt-0.5">Disk write-backs prevented</div>
               <div className="text-[10px] text-zinc-600 mt-0.5">vs FIFO ({roiSummary.fifoDirty} writes)</div>
             </div>
             <div className="p-3 rounded-md bg-[#161616] text-center">
-              <div className="text-xl font-bold font-mono text-zinc-100">{roiSummary.savedMs}ms</div>
+              <div className="text-xl font-bold font-mono text-emerald-400">{roiSummary.savedMs}ms</div>
               <div className="text-[11px] font-mono text-zinc-400 mt-0.5">I/O blocking time prevented</div>
               <div className="text-[10px] text-zinc-600 mt-0.5">{roiSummary.savedWrites} × 10ms / flush</div>
             </div>
             <div className="p-3 rounded-md bg-[#161616] text-center">
-              <div className="text-xl font-bold font-mono text-zinc-100">{roiSummary.eatDiffMs}ms</div>
+              <div className="text-xl font-bold font-mono text-emerald-400">{roiSummary.eatDiffMs}ms</div>
               <div className="text-[11px] font-mono text-zinc-400 mt-0.5">Average EAT improvement</div>
               <div className="text-[10px] text-zinc-600 mt-0.5">per workload run</div>
             </div>
@@ -550,29 +544,33 @@ export default function BenchmarkAnalysisView({ apiBaseUrl = '' }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-900/60">
-                {data.raw_results.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    className={`hover:bg-[#161616] transition-colors ${
-                      row.algorithm === 'AdaptiveHybrid' ? 'text-zinc-100 font-semibold' : 'text-zinc-400'
-                    }`}
-                  >
-                    <td className="py-2 px-2.5">{row.workload}</td>
-                    <td className="py-2 px-2.5">
-                      <span className="text-[11px]">
-                        {row.algorithm}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2.5 text-right font-mono">
-                      {(row.hit_ratio * 100).toFixed(1)}%
-                    </td>
-                    <td className="py-2 px-2.5 text-right font-mono text-rose-400/90">{row.page_faults}</td>
-                    <td className="py-2 px-2.5 text-right font-mono text-amber-400/90">{row.dirty_write_backs}</td>
-                    <td className="py-2 px-2.5 text-right font-mono">
-                      {((row.eat || 0) / 1e6).toFixed(2)} ms
-                    </td>
-                  </tr>
-                ))}
+                {data.raw_results.map((row, idx) => {
+                  const algoColor = ALGO_COLORS[row.algorithm] || '#FAFAFA';
+                  return (
+                    <tr
+                      key={idx}
+                      className="hover:bg-[#161616] transition-colors text-zinc-300"
+                    >
+                      <td className="py-2 px-2.5">{row.workload}</td>
+                      <td className="py-2 px-2.5">
+                        <span
+                          className="font-semibold text-[11px]"
+                          style={{ color: algoColor }}
+                        >
+                          {row.algorithm}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2.5 text-right font-mono">
+                        {(row.hit_ratio * 100).toFixed(1)}%
+                      </td>
+                      <td className="py-2 px-2.5 text-right font-mono text-rose-400/90">{row.page_faults}</td>
+                      <td className="py-2 px-2.5 text-right font-mono text-amber-400/90">{row.dirty_write_backs}</td>
+                      <td className="py-2 px-2.5 text-right font-mono font-medium">
+                        {((row.eat || 0) / 1e6).toFixed(2)} ms
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
