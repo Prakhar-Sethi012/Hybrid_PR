@@ -69,6 +69,11 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
   const [error, setError] = useState(null);
   const [metricMode, setMetricMode] = useState('eat_ms');
 
+  // Separate reshaped state arrays for Recharts
+  const [eatData, setEatData] = useState([]);
+  const [hitRatioData, setHitRatioData] = useState([]);
+  const [dirtyWritesData, setDirtyWritesData] = useState([]);
+
   // Track global configuration values from props
   const globalFrames = config?.frame_count ?? 10;
   const globalReferences = config?.references ?? 1000;
@@ -83,15 +88,130 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
 
   const lastRequestIdRef = React.useRef(0);
 
-  // Sync local controls whenever global config / presets change
+  // Fetch benchmark matrix & reshape data for Recharts
+  const fetchBenchmarkData = useCallback(
+    async (f = frames, r = references, wp = writeProb, s = seed) => {
+      const requestId = ++lastRequestIdRef.current;
+      setIsLoading(true);
+      setError(null);
+      try {
+        const url = `${apiBaseUrl}/api/benchmark?seed=${s}&references=${r}&frames=${f}&frame_count=${f}&write_prob=${wp}&write_probability=${wp}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          let errorDetail = '';
+          try {
+            const errorJson = await res.json();
+            errorDetail = errorJson.detail || errorJson.message || '';
+          } catch {
+            // response was not JSON
+          }
+          const msg = errorDetail
+            ? `Server Error (${res.status}): ${errorDetail}`
+            : `Benchmark fetch failed with status ${res.status} (${res.statusText || 'Internal Server Error'})`;
+          throw new Error(msg);
+        }
+
+        const responseData = await res.json();
+        console.log('Raw API Response:', responseData);
+
+        // Transformation function to reshape flat 16 results into 4 workload objects for Recharts
+        const transformResults = (rawList, metricExtractor) => {
+          const workloads = ['Sequential', 'Loop', 'Random', 'Zipf'];
+          const normalize = (w) => (w && w.includes('Zipf') ? 'Zipf' : (w || 'Unknown'));
+
+          const map = {};
+          workloads.forEach((w) => {
+            map[w] = {
+              name: w,
+              FIFO: 0,
+              LRU: 0,
+              LFU: 0,
+              AdaptiveHybrid: 0,
+            };
+          });
+
+          (rawList || []).forEach((row) => {
+            const w = normalize(row.workload);
+            const algo = row.algorithm;
+            if (map[w] && algo && Object.prototype.hasOwnProperty.call(map[w], algo)) {
+              map[w][algo] = metricExtractor(row);
+            }
+          });
+
+          return workloads.map((w) => map[w]);
+        };
+
+        const flatResults = responseData.raw_results || [];
+        const reshapedEat = transformResults(flatResults, (row) =>
+          Number(((row.eat || 0) / 1_000_000).toFixed(2))
+        );
+        const reshapedHitRatio = transformResults(flatResults, (row) =>
+          Number(((row.hit_ratio || 0) * 100).toFixed(1))
+        );
+        const reshapedDirtyWrites = transformResults(flatResults, (row) =>
+          Number(row.dirty_write_backs ?? 0)
+        );
+
+        const reshapedData = {
+          eat: reshapedEat,
+          hitRatio: reshapedHitRatio,
+          dirtyWrites: reshapedDirtyWrites,
+        };
+        console.log('Reshaped Recharts Data:', reshapedData);
+
+        if (requestId === lastRequestIdRef.current) {
+          setData(responseData);
+          setEatData(reshapedEat);
+          setHitRatioData(reshapedHitRatio);
+          setDirtyWritesData(reshapedDirtyWrites);
+        }
+      } catch (err) {
+        if (requestId === lastRequestIdRef.current) {
+          const errMsg = err.message || 'Failed to fetch benchmark analysis';
+          setError(errMsg);
+          console.error('Benchmark fetch error:', err);
+        }
+      } finally {
+        if (requestId === lastRequestIdRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [apiBaseUrl, frames, references, writeProb, seed]
+  );
+
+  // Trigger fresh fetch whenever global config / presets change
   useEffect(() => {
-    if (config) {
-      if (config.frame_count !== undefined) setFrames(config.frame_count);
-      if (config.references !== undefined) setReferences(config.references);
-      if (config.write_probability !== undefined) setWriteProb(config.write_probability);
-      if (config.seed !== undefined) setSeed(config.seed);
-    }
-  }, [config?.frame_count, config?.references, config?.write_probability, config?.seed]);
+    console.log('Fetching benchmark with config:', {
+      frames: config?.frame_count,
+      writeProb: config?.write_probability,
+    });
+
+    const f = config?.frame_count ?? 10;
+    const r = config?.references ?? 1000;
+    const wp = config?.write_probability ?? 0.2;
+    const s = config?.seed ?? 42;
+
+    setFrames(f);
+    setReferences(r);
+    setWriteProb(wp);
+    setSeed(s);
+
+    fetchBenchmarkData(f, r, wp, s);
+  }, [
+    config?.frame_count,
+    config?.references,
+    config?.write_probability,
+    config?.seed,
+    fetchBenchmarkData,
+  ]);
+
+  // Select the active reshaped array based on the active metric toggle
+  const activeChartData = useMemo(() => {
+    if (metricMode === 'hit_ratio') return hitRatioData;
+    if (metricMode === 'dirty_writes') return dirtyWritesData;
+    return eatData;
+  }, [metricMode, eatData, hitRatioData, dirtyWritesData]);
 
   // CSV Export
   const exportCSV = () => {
@@ -146,72 +266,6 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
       w.print();
     }
   };
-
-  // Fetch benchmark matrix
-  const fetchBenchmark = useCallback(async (f = frames, r = references, wp = writeProb, s = seed) => {
-    const requestId = ++lastRequestIdRef.current;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const url = `${apiBaseUrl}/api/benchmark?seed=${s}&references=${r}&frames=${f}&frame_count=${f}&write_prob=${wp}&write_probability=${wp}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Benchmark matrix failed: ${res.status} ${res.statusText}`);
-      }
-      const json = await res.json();
-      if (requestId === lastRequestIdRef.current) {
-        setData(json);
-      }
-    } catch (err) {
-      if (requestId === lastRequestIdRef.current) {
-        setError(err.message || 'Failed to fetch benchmark analysis');
-      }
-    } finally {
-      if (requestId === lastRequestIdRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [apiBaseUrl, frames, references, writeProb, seed]);
-
-  // Trigger fresh fetch whenever global config (preset) OR local sliders change
-  useEffect(() => {
-    fetchBenchmark(frames, references, writeProb, seed);
-  }, [
-    fetchBenchmark,
-    frames,
-    references,
-    writeProb,
-    seed,
-    config?.frame_count,
-    config?.references,
-    config?.write_probability,
-    config?.seed,
-  ]);
-
-  // Transform raw_results into clustered chart structure
-  const chartData = useMemo(() => {
-    if (!data?.raw_results) return [];
-
-    const workloadGroups = {};
-    data.raw_results.forEach((row) => {
-      const w = row.workload;
-      if (!workloadGroups[w]) {
-        workloadGroups[w] = { workload: w };
-      }
-
-      let val = 0;
-      if (metricMode === 'eat_ms') {
-        val = Number(((row.eat || 0) / 1_000_000).toFixed(2));
-      } else if (metricMode === 'hit_ratio') {
-        val = Number(((row.hit_ratio || 0) * 100).toFixed(1));
-      } else if (metricMode === 'dirty_writes') {
-        val = row.dirty_write_backs || 0;
-      }
-      workloadGroups[w][row.algorithm] = val;
-    });
-
-    return Object.values(workloadGroups);
-  }, [data, metricMode]);
 
   const getMetricTitle = () => {
     switch (metricMode) {
@@ -327,7 +381,7 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
 
             <button
               type="button"
-              onClick={() => fetchBenchmark(frames, references, writeProb, seed)}
+              onClick={() => fetchBenchmarkData(frames, references, writeProb, seed)}
               disabled={isLoading}
               className="p-1.5 rounded bg-[#181818] hover:bg-[#202020] text-zinc-400 hover:text-zinc-200 cursor-pointer disabled:opacity-40 transition-colors"
               title="Re-run benchmark matrix"
@@ -345,7 +399,11 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
             <select
               id="bench-frames"
               value={frames}
-              onChange={(e) => setFrames(Number(e.target.value))}
+              onChange={(e) => {
+                const f = Number(e.target.value);
+                setFrames(f);
+                fetchBenchmarkData(f, references, writeProb, seed);
+              }}
               className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none cursor-pointer"
             >
               {[4, 6, 8, 10, 12, 16, 20, 32].map((f) => (
@@ -361,7 +419,11 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
             <select
               id="bench-refs"
               value={references}
-              onChange={(e) => setReferences(Number(e.target.value))}
+              onChange={(e) => {
+                const r = Number(e.target.value);
+                setReferences(r);
+                fetchBenchmarkData(frames, r, writeProb, seed);
+              }}
               className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none cursor-pointer"
             >
               {[200, 500, 1000, 2000].map((r) => (
@@ -377,7 +439,11 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
             <select
               id="bench-writes"
               value={writeProb}
-              onChange={(e) => setWriteProb(Number(e.target.value))}
+              onChange={(e) => {
+                const wp = Number(e.target.value);
+                setWriteProb(wp);
+                fetchBenchmarkData(frames, references, wp, seed);
+              }}
               className="bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none cursor-pointer"
             >
               {[0.1, 0.2, 0.3, 0.5].map((w) => (
@@ -395,6 +461,8 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
               type="number"
               value={seed}
               onChange={(e) => setSeed(Number(e.target.value))}
+              onBlur={() => fetchBenchmarkData(frames, references, writeProb, seed)}
+              onKeyDown={(e) => e.key === 'Enter' && fetchBenchmarkData(frames, references, writeProb, seed)}
               className="w-16 bg-[#181818] rounded px-2 py-1 text-xs font-mono text-zinc-200 border-0 outline-none"
             />
           </div>
@@ -411,9 +479,19 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
         </div>
 
         {error ? (
-          <div className="h-64 flex items-center justify-center bg-rose-950/20 rounded-lg text-rose-300 gap-2 text-xs font-mono">
-            <AlertCircle className="w-4 h-4 text-rose-400" />
-            <span>{error}</span>
+          <div className="h-64 flex flex-col items-center justify-center bg-rose-950/20 border border-rose-900/40 rounded-lg text-rose-300 gap-3 text-xs font-mono p-4 text-center">
+            <div className="flex items-center gap-2 text-rose-400 font-semibold">
+              <AlertCircle className="w-4 h-4" />
+              <span>Benchmark Execution Error</span>
+            </div>
+            <p className="max-w-md text-rose-300/80">{error}</p>
+            <button
+              type="button"
+              onClick={() => fetchBenchmarkData(frames, references, writeProb, seed)}
+              className="px-3 py-1 bg-rose-900/40 hover:bg-rose-900/70 border border-rose-800/60 text-rose-100 rounded text-xs transition-colors cursor-pointer"
+            >
+              Retry Benchmark
+            </button>
           </div>
         ) : isLoading && !data ? (
           <div className="h-64 flex flex-col items-center justify-center bg-[#161616] rounded-lg text-zinc-400 gap-2 text-xs font-mono">
@@ -423,10 +501,10 @@ export default function BenchmarkAnalysisView({ config, apiBaseUrl = '' }) {
         ) : (
           <div className="h-72 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 15, left: -5, bottom: 5 }}>
+              <BarChart data={activeChartData} margin={{ top: 10, right: 15, left: -5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
                 <XAxis
-                  dataKey="workload"
+                  dataKey="name"
                   stroke="#444"
                   tick={{ fill: '#888', fontSize: 11, fontFamily: 'monospace' }}
                 />
